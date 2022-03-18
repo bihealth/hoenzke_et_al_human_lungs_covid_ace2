@@ -26,7 +26,7 @@ data
     └── cellranger
 ```
 
-final R objects are also available.
+final R objects are also available and should go into `data/seurat`
 
 ## CellBender
 
@@ -88,8 +88,12 @@ macrophage subclustering:
 [SCENIC](https://github.com/aertslab/SCENIC) is run on explant and autopsy macrophages separately
 
 1. prepare loom input files `python prepare_scenic.py`
-2. run scenic: `cd data/scenic; bash run_scenic.sh`
+2. run scenic: `cd data/scenic; bash ../../run_scenic.sh`
 3. process results: `python process_scenic.py`
+
+## scDiffCom
+
+[scDiffCom](https://github.com/CyrilLagger/scDiffCom) is used to investigate intercellular receptor-ligand signaling, see `scDiffCom.R`
 
 ## external datasets
 
@@ -105,6 +109,10 @@ for the comparison with macrophages from other datasets, we downloaded and proce
 - Melms et al.: from the Broad Single Cell Portal under accession [SCP1219](https://singlecell.broadinstitute.org/single_cell/study/SCP1219)
 - Wendisch et al.: see `BAL_macrophages.rds` [here](https://nubes.helmholtz-berlin.de/s/XrM8igTzFTFSoio)
 
+## read mapping statistics
+
+note that bam files from which read statistics are derived cannot be provided due to data privacy restrictions; statistics has been extracted from bam files using `get_subgenomic_reads.py` and `get_coverage.sh`
+
 ## paper figures
 
-all code for paper figures is in `paper_figures.Rmd`; note that bam files from which read statistics are derived cannot be provided due to data privacy restrictions
+all code for paper figures is in `paper_figures.Rmd`
