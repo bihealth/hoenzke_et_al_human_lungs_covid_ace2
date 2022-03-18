@@ -1,0 +1,9 @@
+,n_tot,n_viral,n_subgenomic
+../cellranger_output_AM1212Z_NL63_ACE2_16h/outs/possorted_genome_bam.bam,202603531,52120,16
+../cellranger_output_AM1212Z_NL63_ACE2_48h/outs/possorted_genome_bam.bam,221289870,29822,2
+../cellranger_output_AM1212Z_NL63_ctrl_16h/outs/possorted_genome_bam.bam,101870540,2315,0
+../cellranger_output_AM1212Z_NL63_ctrl_48h/outs/possorted_genome_bam.bam,223224644,3826,0
+../cellranger_output_AM723D_NL63_ACE2_16h/outs/possorted_genome_bam.bam,57379801,51490,41
+../cellranger_output_AM723D_NL63_ACE2_48h/outs/possorted_genome_bam.bam,59506128,31568,3
+../cellranger_output_AM723D_NL63_ctrl_16h/outs/possorted_genome_bam.bam,86438785,1680,0
+../cellranger_output_AM723D_NL63_ctrl_48h/outs/possorted_genome_bam.bam,53681850,2603,2

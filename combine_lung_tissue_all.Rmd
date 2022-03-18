@@ -1,0 +1,155 @@
+---
+title: "combine lung tissue all"
+output: 
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE, cache.lazy=FALSE, message=FALSE, warning=FALSE)
+library(Seurat)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(cowplot)
+library(igraph)
+library(Matrix)
+library(tidyr)
+library(plyr)
+options(future.globals.maxSize = 10 * 1024 * 1024^2)
+```
+
+1st dataset: snRNAseq results on lung autopsy tissue (remove DF doublet calls)
+2nd dataset: scRNAseq results on lung explant tissue (remove DF doublet calls)
+
+```{r get_data,fig.width=8,fig.height=4}
+autopsy <- readRDS('data/seurat/lung_autopsy_all.rds')
+autopsy <- subset(autopsy, subset=DF.classifications=='Singlet')
+autopsy[['autopsy.cluster']] <- Idents(autopsy)
+
+explant <- readRDS('data/seurat/lung_explant_all.rds')
+explant <- subset(explant, subset=DF.classifications=='Singlet')
+explant[['explant.cluster']] <- Idents(explant)
+
+DimPlot(autopsy, label=TRUE,repel=TRUE) + labs(title='autopsy')
+DimPlot(explant, label=TRUE,repel=TRUE) + labs(title='explant')
+```
+
+combine these two objects
+
+```{r integrate_2}
+anchors <- FindIntegrationAnchors(c(autopsy,explant), dims=1:20, assay=c('integrated','integrated'), verbose=FALSE)
+sobj.integrated <- IntegrateData(anchors, dims=1:20, verbose=FALSE)
+sobj.integrated <- ScaleData(sobj.integrated,
+                             verbose = FALSE, assay='integrated') %>%
+  RunPCA(npcs = 20, verbose = FALSE, assay='integrated') %>%
+  FindNeighbors(dims=1:20, verbose = FALSE, assay='integrated') %>%
+  RunUMAP(dims = 1:20, verbose = FALSE, assay='integrated') %>%
+  FindClusters(verbose=FALSE)
+```
+
+```{r show_2,fig.width=6,fig.height=3.5}
+DimPlot(sobj.integrated,reduction='umap',group.by='orig.ident')
+DimPlot(sobj.integrated,reduction='umap',group.by='origin')
+DimPlot(sobj.integrated,reduction='umap',group.by='predicted.id',label=TRUE,repel=TRUE,label.size=2.5) + NoLegend()
+DimPlot(sobj.integrated,reduction='umap',group.by='explant.cluster',label=TRUE,repel=TRUE,label.size=2.5)
+DimPlot(sobj.integrated,reduction='umap',group.by='autopsy.cluster',label=TRUE,repel=TRUE,label.size=2.5)
+DimPlot(sobj.integrated,reduction='umap',label=TRUE)
+
+sobj.integrated@meta.data %>%
+  dplyr::group_by(seurat_clusters,predicted.id) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::mutate(frac=round(n/sum(n),2)) %>%
+  dplyr::filter(frac > .1)
+```
+
+here's a dot plot of cluster markers.
+
+```{r markers,fig.width=15,fig.height=8}
+DefaultAssay(sobj.integrated) <- 'RNA'
+markers <- FindAllMarkers(sobj.integrated, only.pos = TRUE, min.pct = 0.25,
+                          thresh.use = 0.25,
+                          print.bar=FALSE, verbose=FALSE)
+
+write.csv(markers,'data/seurat/lung_combined_all_markers.csv',row.names=FALSE)
+
+top5 <- markers %>%
+  group_by(cluster) %>%
+  top_n(5, avg_logFC)
+
+DotPlot(sobj.integrated, features = unique(top5$gene)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5))
+```
+
+cluster assignment 
+
+```{r rename_clusters,fig.height=5,fig.width=7}
+sobj.integrated <- RenameIdents(sobj.integrated,
+                                '0'='T cells',
+                                '1'='NK cells',
+                                '2'='T cells',
+                                '3'='macrophages',
+                                '4'='monocytes',
+                                '5'='macrophages',
+                                '6'='AT1',
+                                '7'='endothelial',
+                                '8'='AT2',
+                                '9'='macrophages',
+                                '10'='endothelial',
+                                '11'='fibroblasts',
+                                '12'='T cells',
+                                '13'='basophilic / mast',
+                                '14'='stromal',
+                                '15'='fibroblasts',
+                                '16'='endothelial',
+                                '17'='dendritic',
+                                '18'='endothelial / lymphatic',
+                                '19'='B cells',
+                                '20'='fibroblasts',
+                                '21'='basal / secretory',
+                                '22'='T cells',
+                                '23'='ciliated',
+                                '24'='ciliated',
+                                '25'='monocytes',
+                                '26'='plasma cells',
+                                '26'='macrophages',
+                                '27'='macrophages',
+                                '28'='macrophages',
+                                '29'='T cells')
+DimPlot(sobj.integrated,label=TRUE,repel=TRUE)
+```
+
+```{r save_data}
+donor_map <- c('pat89C'='pat1','pat195V'='pat2','pat641D'='pat3','pat663D'='pat4',
+               '89C'='pat1','700D'='pat2','1169Z'='pat3','218V'='pat4','219V'='pat5','102C'='pat6',
+               '17B'='pat7','BB73'='pat8','723D'='pat1','1212Z'='pat2')
+strain_map <- c('H3N2'='IAV','MERS'='MERS-CoV','SCoV1'='SARS-CoV','SCoV2'='SARS-CoV-2', 'NL63'='NL63-CoV','SCoV2B117'='SARS-CoV-2 (B1.1.7)')
+condition_map <- c('control'='control','akut'='acute','chronic'='prolonged','prolonged'='prolonged')
+
+Idents(sobj.integrated) <- factor(Idents(sobj.integrated),
+                               levels=c('AT1','AT2','basal / secretory', 'ciliated',
+                                        'macrophages', 'monocytes','dendritic',
+                                        'T cells','NK cells', 'B cells','plasma cells',
+                                        'endothelial','endothelial / lymphatic',
+                                        'fibroblasts','stromal',
+                                        'basophilic / mast'))
+sobj.integrated[['donor']] <- revalue(sobj.integrated@meta.data$donor, donor_map)
+sobj.integrated[['cluster']] <- Idents(sobj.integrated)
+sobj.integrated[['condition']] <- revalue(sobj.integrated$condition, condition_map)
+sobj.integrated[['origin']] <- factor(sobj.integrated$origin, levels=c('explant','autopsy'))
+
+DefaultAssay(sobj.integrated) <- 'RNA'
+sobj.integrated[['pct.H3N2']] <- PercentageFeatureSet(sobj.integrated, pattern='^H3N2-')
+sobj.integrated[['pct.MERS']] <- PercentageFeatureSet(sobj.integrated, pattern='^MERS-')
+sobj.integrated[['pct.SCoV1']] <- PercentageFeatureSet(sobj.integrated, pattern='^SCoV1-')
+sobj.integrated[['pct.SCoV2']] <- PercentageFeatureSet(sobj.integrated, pattern='^SCoV2-')
+tmp <- sobj.integrated@meta.data[,c('pct.H3N2','pct.MERS','pct.SCoV1','pct.SCoV2')]
+sobj.integrated[['virus']] <- ifelse(rowSums(tmp)==0, 'none', gsub('pct.','',colnames(tmp)[apply(tmp,1,which.max)]))
+
+saveRDS(sobj.integrated,'data/seurat/lung_combined_all.rds')
+```
+
+```{r sessionInfo}
+sessionInfo()
+```

@@ -1,0 +1,409 @@
+---
+title: "run differential expression"
+output: 
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE, cache.lazy=FALSE, message=FALSE, warning=FALSE)
+library(Seurat)
+library(dplyr)
+library(stringr)
+library(Matrix)
+library(tidyr)
+library(DESeq2)
+library(plyr)
+library(multcomp)
+library(tmod)
+```
+
+# lung scRNAseq and snRNAseq data
+
+```{r get_data}
+lung_all <- readRDS('data/seurat/lung_combined_all.rds')
+DefaultAssay(lung_all) <- 'RNA'
+lung_all[['cluster']] <- Idents(lung_all)
+lung_all[['condition']] <- revalue(lung_all$condition, c('akut'='akut','control'='control',
+                                                         'chronic'='prolonged','prolonged'='prolonged'))
+
+clusters <- c('AT2','AT1','monocytes','macrophages','dendritic','fibroblasts',
+              'T cells','NK cells','endothelial')
+```
+
+```{r get_counts_explants}
+explant <- subset(lung_all, origin=='explant')
+
+expr <- list()
+for (cluster in unique(Idents(explant))) {
+ for (sample in unique(explant@meta.data$orig.ident)) {
+   cells <- Cells(explant)[(explant@meta.data$orig.ident==sample) & (Idents(explant)==cluster)]
+   if (length(cells) > 1) {
+     expr[[paste0(cluster,'_',sample)]] <- rowSums(explant@assays$RNA@counts[,cells])
+   }
+ }
+}
+for (sample in unique(explant@meta.data$orig.ident)) {
+ cells <- Cells(explant)[(explant@meta.data$orig.ident==sample)]
+ expr[[paste0('all_',sample)]] <- rowSums(explant@assays$RNA@counts[,cells])
+}
+
+colData <- data.frame(cell.type=factor(gsub('_.*','',names(expr))),
+                     donor=gsub('[^_]*_lung-([0-9]*[A-Z]*)-.*','\\1',names(expr)),
+                     infect=factor(gsub('BSA|FCS','control',
+                                        gsub('[^_]*_lung-[0-9]*[A-Z]*-','',names(expr))),
+                                   levels=c('control','H3N2','MERS','SCoV1','SCoV2')),
+                     group=names(expr),
+                     row.names=names(expr))
+
+counts <- do.call(cbind,expr)
+```
+
+```{r run_DE_explants}
+res <- list()
+for (cluster in c('all',clusters)) {
+  take_row <- rowSums(counts) > 0
+  take_col <- (colSums(counts) > 0) & (colData[,'cell.type']==cluster)
+  try({
+    dds <- DESeqDataSetFromMatrix(countData=counts[take_row,take_col],
+                                  colData=colData[take_col,,drop=FALSE],
+                                  design=~donor+infect)
+    if (cluster!='all')
+      dds <- estimateSizeFactors(dds, type='poscounts')
+    dds <- DESeq(dds)
+    res[[paste0(cluster,'_H3N2')]] <- lfcShrink(dds,
+                                                contrast=c('infect','H3N2','control'),
+                                                method='normal',
+                                                format="DataFrame") %>%
+      as.data.frame() %>%
+      tibble::rownames_to_column('gene_name') %>%
+      dplyr::mutate(cluster=cluster,infect='H3N2')
+    res[[paste0(cluster,'_MERS')]] <- lfcShrink(dds,
+                                                contrast=c('infect','MERS','control'),
+                                                method='normal',
+                                                format="DataFrame") %>%
+      as.data.frame() %>%
+      tibble::rownames_to_column('gene_name') %>%
+      dplyr::mutate(cluster=cluster,infect='MERS')
+    res[[paste0(cluster,'_SCoV1')]] <- lfcShrink(dds,
+                                                 contrast=c('infect','SCoV1','control'),
+                                                 method='normal',
+                                                 format="DataFrame") %>%
+      as.data.frame() %>%
+      tibble::rownames_to_column('gene_name') %>%
+      dplyr::mutate(cluster=cluster,infect='SCoV1')
+    res[[paste0(cluster,'_SCoV2')]] <- lfcShrink(dds,
+                                                 contrast=c('infect','SCoV2','control'),
+                                                 method='normal',
+                                                 format="DataFrame") %>%
+      as.data.frame() %>%
+      tibble::rownames_to_column('gene_name') %>%
+      dplyr::mutate(cluster=cluster,infect='SCoV2')
+  })
+}
+
+write.csv(do.call(rbind,res),file='data/differential_expression/lung_explant_pseudobulk_DE.csv')
+```
+
+```{r get_counts_autopsy}
+autopsy <- subset(lung_all, origin=='autopsy')
+autopsy@meta.data$virus <- ifelse(autopsy$pct.SCoV2 > 0, 'SCoV2','none')
+
+expr <- list()
+for (cluster in unique(Idents(autopsy))) {
+  for (sample in unique(autopsy@meta.data$orig.ident)) {
+    cells <- Cells(autopsy)[(autopsy@meta.data$orig.ident==sample) & (Idents(autopsy)==cluster)]
+    if (length(cells) > 1) {
+      expr[[paste0(cluster,'_',sample)]] <- rowSums(autopsy@assays$RNA@counts[,cells])
+    }
+  }
+}
+for (sample in unique(autopsy@meta.data$orig.ident)) {
+  cells <- Cells(autopsy)[(autopsy@meta.data$orig.ident==sample)]
+  expr[[paste0('all_',sample)]] <- rowSums(autopsy@assays$RNA@counts[,cells])
+}
+
+colData <- data.frame(cell.type=factor(gsub('_.*','',names(expr))),
+                      donor=gsub('^[^_]*_([A-Za-z0-9]*)\\-.*','\\1',names(expr)),
+                      condition=factor(gsub('chronic','prolonged',gsub('^[^_]*_.*\\-([^-]*$)','\\1',names(expr))),
+                                       levels=c('control','akut','prolonged')),
+                      group=names(expr),
+                      row.names=names(expr))
+
+counts <- do.call(cbind,expr)
+```
+
+```{r run_DE_autopys}
+res <- list()
+for (cluster in c('all',clusters)) {
+  take_row <- rowSums(counts) > 0
+  take_col <- (colSums(counts) > 0) & (colData[,'cell.type']==cluster)
+  try({
+    dds <- DESeqDataSetFromMatrix(countData=counts[take_row,take_col],
+                                  colData=colData[take_col,,drop=FALSE],
+                                  design=~condition)
+    if (cluster!='all')
+      dds <- estimateSizeFactors(dds, type='poscounts')
+    dds <- DESeq(dds)
+    res[[paste0(cluster,'_akut')]] <- lfcShrink(dds,
+                                                contrast=c('condition','akut','control'),
+                                                method='normal',
+                                                format="DataFrame") %>%
+      as.data.frame() %>%
+      tibble::rownames_to_column('gene_name') %>%
+      dplyr::mutate(cluster=cluster,condition='akut')
+    res[[paste0(cluster,'_prolonged')]] <- lfcShrink(dds,
+                                                   contrast=c('condition','prolonged','control'),
+                                                   method='normal',
+                                                   format="DataFrame") %>%
+      as.data.frame() %>%
+      tibble::rownames_to_column('gene_name') %>%
+      dplyr::mutate(cluster=cluster,condition='prolonged')
+  })
+}
+
+write.csv(do.call(rbind,res),file='data/differential_expression/lung_autopsy_pseudobulk_DE.csv')
+```
+
+```{r run_loglog_explants}
+run_cloglog <- function (gene, D, L, donor, virus, name) {
+  mod <- glm(D[gene,] ~ 1 + offset(log(L)) + donor + virus, family=binomial(link='cloglog'))
+  summary(mod)$coef[c('(Intercept)',name),c(1,2,4)]
+}
+
+res <- list()
+for (clust in clusters) {
+  sub1 <- subset(explant, subset=(cluster==clust))
+  for (strain in c('H3N2','MERS','SCoV1','SCoV2')) {
+    sub2 <- subset(sub1, subset=(infect==strain))
+    D <- sub2@assays$RNA@counts > 0
+    L <- sub2@meta.data$nCount_RNA
+    virus <- factor(sub2@meta.data$virus,levels=c('none',strain))
+    donor <- sub2@meta.data$donor
+    genes <- row.names(D)[order(rowSums(D),decreasing = TRUE)][1:10000]
+    tmp <- lapply(genes, run_cloglog, D=D, L=L,
+                  virus=virus, donor=donor, name=paste0('virus',strain))
+    names(tmp) <- genes
+    drop <- unlist(lapply(tmp, is.null))
+    tmp <- t(as.array(simplify2array(tmp[genes[!drop]],higher=FALSE)))
+    colnames(tmp) <- c('intercept_estimate','estimate','intercept_se','se','intercept_p','pval')
+
+    res[[paste0(strain,'_',clust)]] <- tmp %>%
+      as.data.frame() %>%
+      tibble::rownames_to_column('gene_name') %>%
+      dplyr::filter(intercept_p < .05) %>%
+      dplyr::mutate(padj=p.adjust(pval,method='BH'),
+                    infect=strain,
+                    cluster=clust)
+  }
+}
+
+write.csv(do.call(rbind,res), 'data/differential_expression/lung_explant_regression_DE.csv')
+```
+
+```{r run_loglog_autopsy}
+run_cloglog <- function (gene, D, L, donor, virus, name) {
+  mod <- glm(D[gene,] ~ 1 + offset(log(L)) + donor + virus, family=binomial(link='cloglog'))
+  summary(mod)$coef[c('(Intercept)',name),c(1,2,4)]
+}
+
+res <- list()
+for (clust in clusters) {
+  sub1 <- subset(autopsy, subset=(cluster==clust))
+  for (cond in c('acute','prolonged')) {
+    sub2 <- subset(sub1, subset=(condition==cond))
+    if (sum(table(sub2@meta.data$virus) > 0) > 1) {
+      D <- sub2@assays$RNA@counts > 0
+      L <- sub2@meta.data$nCount_RNA
+      virus <- factor(sub2@meta.data$virus,levels=c('none','SCoV2'))
+      donor <- sub2@meta.data$donor
+      genes <- row.names(D)[order(rowSums(D),decreasing = TRUE)][1:10000]
+      tmp <- lapply(genes, run_cloglog, D=D, L=L,
+                    virus=virus, donor=donor, name='virusSCoV2')
+      names(tmp) <- genes
+      drop <- unlist(lapply(tmp, is.null))
+      tmp <- t(as.array(simplify2array(tmp[genes[!drop]],higher=FALSE)))
+      colnames(tmp) <- c('intercept_estimate','estimate','intercept_se','se','intercept_p','pval')
+      
+      res[[paste0(cond,'_',clust)]] <- tmp %>%
+        as.data.frame() %>%
+        tibble::rownames_to_column('gene_name') %>%
+        dplyr::filter(intercept_p < .05) %>%
+        dplyr::mutate(padj=p.adjust(pval,method='BH'),
+                      condition=cond,
+                      cluster=clust)
+    }
+  }
+}
+
+write.csv(do.call(rbind,res), 'data/differential_expression/lung_autopsy_regression_DE.csv')
+```
+
+# bulk RNAseq
+
+```{r bulkRNAseq,eval=FALSE}
+#### this should be run in R 3.5 with DESeq2_1.22.1
+counts <- read.csv('data/explant/bulk_RNAseq/bulk_RNAseq_counts.csv',row.names=1,header=1)
+meta <- read.csv('data/explant/bulk_RNAseq/bulk_RNAseq_metadata.csv',row.names=1,header=1)
+row.names(meta) <- colnames(counts)
+dds <- DESeqDataSetFromMatrix(counts,colData=meta,design=~patient+treatment)
+dds <- DESeq(dds)
+res <- do.call(rbind,
+               lapply(c('H3N2','MERS','SCoV1','SCoV2'), function(x) 
+                 lfcShrink(dds, contrast=c('treatment',x,'mock'),type='normal') %>% 
+                   as.data.frame() %>%
+                   tibble::rownames_to_column('gene_id') %>%
+                   dplyr::mutate(infect=revalue(x,strain_map))))
+write.csv(res, "data/differential_expression/bulkRNAseq_results.csv")
+rld <- vst(dds,blind=FALSE)
+saveRDS(rld,'data/differential_expression/DESeq2_rld.rds')
+```
+
+# ex-vivo AM
+
+
+```{r AM_get_data}
+AM <- readRDS('data/seurat/ex_vivo_AM.rds')
+```
+
+differential expression: we sum up counts from each sample to get "pseudo-bulk" data, and then we can compare the different conditions
+
+```{r AM_get_pseudobulk}
+expr <- list()
+for (sample in unique(AM@meta.data$orig.ident)) {
+  cells <- Cells(AM)[(AM@meta.data$orig.ident==sample)]
+  expr[[paste0('all_',sample)]] <- rowSums(AM@assays$RNA@counts[,cells])
+}
+
+colData <- data.frame(cell.type=factor(gsub('_.*','',names(expr))),
+                      donor=factor(gsub('.*_AM([0-9]*[A-Z])-([A-Za-z0-9]*)-([A-Za-z0-9]*)-([0-9]*h)','\\1', names(expr)),
+                                   levels=c('723D','1212Z')),
+                      infect=factor(sub('.*_AM([0-9]*[A-Z])-([A-Za-z0-9]*)-([A-Za-z0-9]*)-([0-9]*h)','\\2', names(expr)),
+                                    levels=c('control','SCoV2','NL63')),
+                      background=factor(gsub('.*_AM([0-9]*[A-Z])-([A-Za-z0-9]*)-([A-Za-z0-9]*)-([0-9]*h)','\\3', names(expr)),
+                                        levels=c('ctrl','ACE2')),
+                      timepoint=factor(gsub('.*_AM([0-9]*[A-Z])-([A-Za-z0-9]*)-([A-Za-z0-9]*)-([0-9]*h)','\\4', names(expr)),
+                                       levels=c('16h','48h')),
+                      group=as.factor(gsub('.*_AM([0-9]*[A-Z])-([A-Za-z0-9]*)-([A-Za-z0-9]*)-([0-9]*h)','\\2_\\3_\\4', names(expr))),
+                      row.names=names(expr))
+
+counts <- do.call(cbind,expr)
+```
+
+differential expression for the ctrl and ACE2+ samples separately
+
+```{r AM_DE_celltype_ctrl, fig.width=10,fig.height=5}
+res <- list()
+for (cluster in c("all")) {
+  take_row <- rowSums(counts) > 0
+  take_col <- (colSums(counts) > 0) & (colData[,'cell.type']==cluster) & (colData[,'background']=='ctrl')
+  dds <- DESeqDataSetFromMatrix(countData=counts[take_row,take_col],
+                                colData=colData[take_col,,drop=FALSE],
+                                design=~donor+infect+timepoint)
+  dds <- estimateSizeFactors(dds, type='poscounts')
+  dds <- DESeq(dds)
+  res[[paste0(cluster,'_SCoV2')]] <- lfcShrink(dds,contrast=c('infect','SCoV2','control'),
+                                               type='normal',
+                                               format="DataFrame") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column('gene_name') %>%
+    dplyr::mutate(cluster=cluster,contrast='SCoV2')
+  res[[paste0(cluster,'_NL63')]] <- lfcShrink(dds,contrast=c('infect','NL63','control'),
+                                              type='normal',
+                                              format="DataFrame") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column('gene_name') %>%
+    dplyr::mutate(cluster=cluster,contrast='NL63')
+  res[[paste0(cluster,'_48h')]] <- lfcShrink(dds,contrast=c('timepoint','48h','16h'),
+                                             type='normal',
+                                             format="DataFrame") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column('gene_name') %>%
+    dplyr::mutate(cluster=cluster,contrast='48h')
+}
+
+pseudobulk_ctrl <- do.call(rbind,res)
+
+write.csv(pseudobulk_ctrl,file='data/differential_expression/ex_vivo_AM_ctrl_pseudobulk_DE.csv')
+
+res <- list()
+for (cluster in c("all")) {
+  take_row <- rowSums(counts) > 0
+  take_col <- (colSums(counts) > 0) & (colData[,'cell.type']==cluster) & (colData[,'background']=='ACE2')
+  dds <- DESeqDataSetFromMatrix(countData=counts[take_row,take_col],
+                                colData=colData[take_col,,drop=FALSE],
+                                design=~donor+infect+timepoint)
+  dds <- estimateSizeFactors(dds, type='poscounts')
+  dds <- DESeq(dds)
+  res[[paste0(cluster,'_SCoV2')]] <- lfcShrink(dds,contrast=c('infect','SCoV2','control'),
+                                               type='normal',
+                                               format="DataFrame") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column('gene_name') %>%
+    dplyr::mutate(cluster=cluster,contrast='SCoV2')
+  res[[paste0(cluster,'_NL63')]] <- lfcShrink(dds,contrast=c('infect','NL63','control'),
+                                              type='normal',
+                                              format="DataFrame") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column('gene_name') %>%
+    dplyr::mutate(cluster=cluster,contrast='NL63')
+  res[[paste0(cluster,'_48h')]] <- lfcShrink(dds,contrast=c('timepoint','48h','16h'),
+                                             type='normal',
+                                             format="DataFrame") %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column('gene_name') %>%
+    dplyr::mutate(cluster=cluster,contrast='48h')
+}
+
+pseudobulk_ACE2 <- do.call(rbind,res)
+
+write.csv(pseudobulk_ctrl,file='data/differential_expression/ex_vivo_AM_ACE2_pseudobulk_DE.csv')
+```
+
+use tmod for pathway enrichment
+
+```{r AM_tmod_pseudobulk}
+pseudobulk <- rbind(read.csv('data/differential_expression/ex_vivo_AM_ctrl_pseudobulk_DE.csv',
+                             header=1,row.names=1,stringsAsFactors=FALSE)  %>%
+                      dplyr::mutate(background='ctrl'),
+                    read.csv('data/differential_expression/ex_vivo_AM_ACE2_pseudobulk_DE.csv',
+                             header=1,row.names=1,stringsAsFactors=FALSE)  %>%
+                      dplyr::mutate(background='ACE2'))
+
+msig <- tmodImportMSigDB('msigdb_v7.2.xml')
+sel <- (msig$MODULES$Category %in% c("H"))  | (msig$MODULES$Subcategory %in% c('CP:REACTOME','GO:BP','CP:KEGG'))
+
+log10pval <- pseudobulk %>%
+  dplyr::mutate(group=paste0(background,'_',contrast)) %>%
+  dplyr::mutate(log10pval=-sign(log2FoldChange)*log10(padj)) %>%
+  dplyr::select(gene_name,group,log10pval) %>%
+  dplyr::filter(!is.na(log10pval)) %>%
+  spread(group,log10pval) %>%
+  tibble::column_to_rownames('gene_name') %>%
+  dplyr::slice(sample(1:n())) 
+
+sorted_genes <- list()
+for (contrast in colnames(log10pval)) {
+  genes_up <- row.names(log10pval)[order(log10pval[[contrast]],decreasing=TRUE,na.last=NA)]
+  genes_up[log10pval[genes_up,contrast] <= 0] <- sample(genes_up[log10pval[genes_up,contrast] <= 0])
+  sorted_genes[[paste0(contrast,'_up')]] <- genes_up
+  genes_down <- row.names(log10pval)[order(log10pval[[contrast]],decreasing=FALSE,na.last=NA)]
+  genes_down[log10pval[genes_down,contrast] >= 0] <- sample(genes_down[log10pval[genes_down,contrast] >= 0])
+  sorted_genes[[paste0(contrast,'_down')]] <- genes_down
+}
+
+tmods <- do.call(rbind,lapply(sorted_genes,function(x) tmodCERNOtest(x,mset=msig[sel])))
+
+write.csv(tmods %>%
+            tibble::rownames_to_column('tmp') %>%
+            dplyr::mutate(dataset=gsub('\\..*','',tmp)) %>%
+            dplyr::mutate(contrast=gsub('.*_([^_]*)_.*','\\1',dataset)) %>%
+            dplyr::mutate(background=gsub('([^_]*)_.*','\\1',dataset)),
+          file='data/differential_expression/ex_vivo_AM_pseudobulk_DE_tmod.csv')
+```
+
+
+```{r sessionInfo}
+sessionInfo()
+```

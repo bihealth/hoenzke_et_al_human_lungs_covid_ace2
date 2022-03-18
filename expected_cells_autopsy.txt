@@ -1,0 +1,8 @@
+17B-control	2700
+A333-chronic	7600
+A344-R3-chronic	3800
+A592-prolonged	8200
+BB73-control	10500
+O325-akut	4100
+T128-akut	4400
+T188-R2-prolonged	10900

@@ -1,0 +1,153 @@
+---
+title: "combine lung tissue controls"
+output: 
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE, cache.lazy=FALSE, message=FALSE, warning=FALSE)
+library(Seurat)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(cowplot)
+library(igraph)
+library(Matrix)
+library(tidyr)
+library(plyr)
+options(future.globals.maxSize = 10 * 1024 * 1024^2)
+```
+
+1st dataset: snRNAseq results on lung autopsy tissue (control samples; remove DF doublet calls)
+2nd dataset: scRNAseq results on lung explant tissue (control samples; remove DF doublet calls)
+
+```{r get_data,fig.width=8,fig.height=4}
+autopsy <- readRDS('data/seurat/lung_autopsy_controls.rds')
+autopsy <- subset(autopsy, subset=DF.classifications=='Singlet')
+autopsy[['autopsy.cluster']] <- Idents(autopsy)
+
+explant <- readRDS('data/seurat/lung_explant_controls.rds')
+explant <- subset(explant, subset=DF.classifications=='Singlet')
+explant[['explant.cluster']] <- Idents(explant)
+
+DimPlot(autopsy, label=TRUE,repel=TRUE) + labs(title='autopsy')
+DimPlot(explant, label=TRUE,repel=TRUE) + labs(title='explant')
+```
+
+combine these two objects
+
+```{r integrate_2}
+anchors <- FindIntegrationAnchors(c(autopsy,explant), dims=1:20, assay=c('integrated','integrated'), verbose=FALSE)
+sobj.integrated <- IntegrateData(anchors, dims=1:20, verbose=FALSE)
+sobj.integrated <- ScaleData(sobj.integrated,
+                             verbose = FALSE, assay='integrated') %>%
+  RunPCA(npcs = 20, verbose = FALSE, assay='integrated') %>%
+  FindNeighbors(dims=1:20, verbose = FALSE, assay='integrated') %>%
+  RunUMAP(dims = 1:20, verbose = FALSE, assay='integrated') %>%
+  FindClusters(verbose=FALSE)
+```
+
+```{r show_2,fig.width=6,fig.height=3.5}
+DimPlot(sobj.integrated,reduction='umap',group.by='orig.ident')
+DimPlot(sobj.integrated,reduction='umap',group.by='origin')
+DimPlot(sobj.integrated,reduction='umap',group.by='predicted.id',label=TRUE,repel=TRUE,label.size=2.5) + NoLegend()
+DimPlot(sobj.integrated,reduction='umap',group.by='explant.cluster',label=TRUE,repel=TRUE,label.size=2.5)
+DimPlot(sobj.integrated,reduction='umap',group.by='autopsy.cluster',label=TRUE,repel=TRUE,label.size=2.5)
+DimPlot(sobj.integrated,reduction='umap',label=TRUE)
+
+sobj.integrated@meta.data %>%
+  dplyr::group_by(seurat_clusters,predicted.id) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::mutate(frac=round(n/sum(n),2)) %>%
+  dplyr::filter(frac > .1)
+```
+
+recluster with higher resolution to separate B and dendritic cells
+
+```{r show_3,fig.width=6,fig.height=3.5}
+sobj.integrated <- FindClusters(sobj.integrated, resolution=1.2, verbose=FALSE)
+DimPlot(sobj.integrated,reduction='umap',label=TRUE)
+
+sobj.integrated@meta.data %>%
+  dplyr::group_by(seurat_clusters,predicted.id) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::mutate(frac=round(n/sum(n),2)) %>%
+  dplyr::filter(frac > .1)
+```
+
+cluster assignment 
+
+```{r rename_clusters,fig.height=5,fig.width=7}
+sobj.integrated <- RenameIdents(sobj.integrated,
+                                '0'='T cells',
+                                '1'='endothelial',
+                                '2'='AT1',
+                                '3'='NK cells',
+                                '4'='macrophages',
+                                '5'='AT2',
+                                '6'='macrophages',
+                                '7'='T cells',
+                                '8'='NK cells',
+                                '9'='fibroblasts',
+                                '10'='macrophages',
+                                '11'='monocytes',
+                                '12'='T cells',
+                                '13'='basophilic / mast',
+                                '14'='monocytes',
+                                '15'='endothelial',
+                                '16'='T cells',
+                                '17'='stromal',
+                                '18'='fibroblasts',
+                                '19'='T cells',
+                                '20'='endothelial',
+                                '21'='endothelial / lymphatic',
+                                '22'='fibroblasts',
+                                '23'='dendritic',
+                                '24'='B cells',
+                                '25'='ciliated')
+
+DimPlot(sobj.integrated,label=TRUE,repel=TRUE)
+```
+
+here's a dot plot of cluster markers.
+
+```{r markers,fig.width=15,fig.height=8}
+DefaultAssay(sobj.integrated) <- 'RNA'
+markers <- FindAllMarkers(sobj.integrated, only.pos = TRUE, min.pct = 0.25,
+                          thresh.use = 0.25,
+                          print.bar=FALSE, verbose=FALSE)
+
+write.csv(markers,'data/seurat/lung_combined_control_markers.csv',row.names=FALSE)
+
+top5 <- markers %>%
+  group_by(cluster) %>%
+  top_n(5, avg_logFC)
+
+DotPlot(sobj.integrated, features = unique(top5$gene)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5))
+```
+
+```{r save_data}
+donor_map <- c('pat89C'='pat1','pat195V'='pat2','pat641D'='pat3','pat663D'='pat4',
+               '89C'='pat1','700D'='pat2','1169Z'='pat3','218V'='pat4','219V'='pat5','102C'='pat6',
+               '17B'='pat7','BB73'='pat8','723D'='pat1','1212Z'='pat2')
+
+Idents(sobj.integrated) <- factor(Idents(sobj.integrated),
+                               levels=c('AT1','AT2', 'ciliated',
+                                        'macrophages', 'monocytes','dendritic',
+                                        'T cells','NK cells','B cells',
+                                        'endothelial','endothelial / lymphatic',
+                                        'fibroblasts','stromal',
+                                        'basophilic / mast'))
+sobj.integrated[['donor']] <- revalue(sobj.integrated@meta.data$donor, donor_map)
+sobj.integrated[['cluster']] <- Idents(sobj.integrated)
+sobj.integrated[['origin']] <- factor(sobj.integrated$origin, levels=c('explant','autopsy'))
+
+saveRDS(sobj.integrated,'data/seurat/lung_combined_control.rds')
+```
+
+```{r sessionInfo}
+sessionInfo()
+```

@@ -1,0 +1,2521 @@
+---
+title: "Hönzke et al. figures"
+output: 
+  html_document:
+    df_print: paged
+    code_folding: hide
+    toc: true
+    toc_depth: 2
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE, cache.lazy=FALSE, message=FALSE, 
+                      warning=FALSE, dev=c('png'), dpi=300)
+library(Seurat)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(cowplot)
+library(igraph)
+library(Matrix)
+library(tidyr)
+library(DESeq2)
+library(tmod)
+library(openxlsx)
+library(dendextend)
+library(stringr)
+library(ggrepel)
+library(plyr)
+library(ggpubr)
+library(ComplexHeatmap)
+library(limma)
+library(gridExtra)
+library(gtools)
+library(lme4)
+library(ggh4x)
+library(zoo)
+options(future.globals.maxSize = 10 * 1024 * 1024^2)
+```
+
+```{r definitions}
+donor_map <- c('pat89C'='pat1','pat195V'='pat2','pat641D'='pat3','pat663D'='pat4',
+               '89C'='pat1','700D'='pat2','1169Z'='pat3','218V'='pat4','219V'='pat5','102C'='pat6',
+               '17B'='pat7','BB73'='pat8','723D'='pat1','1212Z'='pat2')
+strain_map <- c('H3N2'='IAV','MERS'='MERS-CoV','SCoV1'='SARS-CoV','SCoV2'='SARS-CoV-2', 'NL63'='NL63-CoV')
+condition_map <- c('control'='control','akut'='acute','chronic'='prolonged','prolonged'='prolonged')
+
+donor_colors <- list('pat1'='burlywood2','pat2'='lightblue3',
+                     'pat3'='chartreuse3','pat4'='lightgoldenrod1','pat5'='lightpink1','pat6'='antiquewhite3')
+strain_colors <- list('IAV'='darkgoldenrod2','MERS-CoV'='cornflowerblue',
+                      'SARS-CoV-2'='coral2','SARS-CoV'='darkseagreen3',
+                      'none'='gray80', 'control'='gray80','mock'='gray80', 
+                      'NL63-CoV'='darkolivegreen')
+condition_colors <- c('control'='gray80','acute'='firebrick1',
+                      'chronic'='chocolate','prolonged'='darkred')
+origin_colors <- c('explant'='lightyellow3','autopsy'='saddlebrown')
+background_colors <- c('mock'='gray','ACE2'='darkorange')
+timepoint_colors <- c('16h'='steelblue1','48h'='steelblue4')
+
+lung_cell_type_colors <- list('AT1'='coral','AT2'='brown3','basal / secretory'='chocolate1',
+                              'ciliated'='orangered3', 'basal'='chocolate3',
+                              'basophilic / mast'='greenyellow','endothelial / lymphatic'='darkorchid1',
+                              'endothelial'='darkorchid3',
+                              'fibroblasts'='dodgerblue2',
+                              'stromal'='hotpink3','T cells'='aquamarine1', 
+                              'NK cells'='aquamarine3', 'B cells'='aquamarine4', 'plasma cells'='cadetblue',
+                              'monocytes'='darkseagreen1','macrophages'='darkolivegreen4',
+                              'dendritic'='darkseagreen3')
+
+organoid_cell_type_colors <- list('AT2'='darkolivegreen3',
+                                  'basal'='sandybrown',
+                                  'ciliated'='pink4', 
+                                  'secretory'='chocolate3')
+
+myspread <- function(df, key, value) {
+    # quote key
+    keyq <- rlang::enquo(key)
+    # break value vector into quotes
+    valueq <- rlang::enquo(value)
+    s <- rlang::quos(!!valueq)
+    df %>% gather(variable, value, !!!s) %>%
+        unite(temp, !!keyq, variable) %>%
+        spread(temp, value)
+}
+```
+
+# Figure 1 + S1
+
+```{r get_data_fig1}
+lung_control <- readRDS('data/seurat/lung_combined_control.rds')
+```
+
+Figure 1B
+
+```{r Fig1B,fig.width=10,fig.height=4}
+anno <- data.frame(x=c(-15,-15),
+                   xend=c(-10,-15),
+                   y=c(-12,-12),
+                   yend=c(-12,-7))
+anno_text <- data.frame(x=c(-12.5,-16),
+                        y=c(-13,-9.5),
+                        label=c('UMAP 1','UMAP 2'),
+                        angle=c(0,90))
+
+DimPlot(lung_control,label=TRUE,repel=TRUE, split.by='origin', label.size=3) + 
+  scale_color_manual(values=lung_cell_type_colors) + 
+  theme_void() + 
+  theme(legend.position='none')  + 
+  geom_segment(data=cbind(anno,data.frame(origin=factor('explant',levels=c('explant','origin')))),
+               aes(x=x,y=y,xend=xend,yend=yend),
+            arrow=arrow(length=unit(2,'mm')),colour='black',size=1) + 
+  geom_text(data=cbind(anno_text,data.frame(origin=factor('explant',levels=c('explant','origin')))),
+            aes(x=x,y=y,label=label,angle=angle),size=3) + 
+  coord_fixed()
+```
+
+Figure 1C
+
+```{r Fig_1C,fig.width=10,fig.height=4}
+markers <- c('ACE2','KREMEN1','ASGR1','BSG','TMPRSS2','FURIN')
+FetchData(lung_control,c('UMAP_1','UMAP_2','origin',markers)) %>%
+  gather(gene,expression,-c(UMAP_1,UMAP_2,origin)) %>%
+  dplyr::arrange(gene,expression) %>%
+  dplyr::mutate(gene=factor(gene,levels=markers)) %>%
+  ggplot(aes(x=UMAP_1,y=UMAP_2)) +
+  geom_point(aes(color=expression),size=.25) + 
+  geom_segment(data=cbind(anno,data.frame(gene=factor('ACE2',levels=markers))),
+               aes(x=x,y=y,xend=xend,yend=yend),
+               arrow=arrow(length=unit(1.25,'mm')),colour='black',size=.5) + 
+  geom_text(data=cbind(anno_text,data.frame(gene=factor('ACE2',levels=markers))),
+            aes(x=x,y=y,label=label,angle=angle),size=1.5) + 
+  facet_grid(origin~gene,switch='y') +
+  scale_color_gradient(low='cornflowerblue',high='darkred', 
+                       na.value='gray80', 
+                       lim=c(1.e-6,NA), 
+                       guide=guide_colorbar(title.position='right',
+                                            title.theme=element_text(angle=90,hjust=.5,vjust=.5))) +
+  coord_fixed() +
+  theme_void()
+```
+
+Figure S1A
+
+```{r Fig_S1A,fig.width=9,fig.height=4}
+markers <- read.csv('data/seurat/lung_combined_control_markers.csv', stringsAsFactors=FALSE)
+
+top3 <- markers %>% 
+  group_by(cluster) %>% 
+  dplyr::mutate(cluster=factor(cluster,levels=rev(levels(Idents(lung_control))))) %>%
+  dplyr::arrange(cluster) %>%
+  slice_max(avg_logFC, n=3)
+
+DotPlot(lung_control, features = rev(top3$gene)) + 
+  theme_minimal() +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5)) + 
+  scale_y_discrete(limits = rev(levels(Idents(lung_control)))) +
+  coord_cartesian(clip = 'off') +
+  scale_color_gradient2(low='blue3',high='red3') +
+  labs(x='',y='')
+
+write.xlsx(markers, 'data/tables/Table_S3.xlsx', sheetName='cluster markers', row.names=FALSE)
+```
+
+Figure S1B
+
+```{r Fig_S1B,fig.width=7.5,fig.height=4}
+markers <- c('EPCAM','CLDN5','FABP4','SFTPC','COL1A2','ACTA2')
+ggplot(FetchData(lung_control,c('UMAP_1','UMAP_2',markers)) %>%
+         gather(gene,expression,-c(UMAP_1,UMAP_2)) %>%
+         dplyr::mutate(gene=factor(gsub('rna_','',gene),
+                                   levels=markers)) %>%
+         dplyr::arrange(gene,expression),
+       aes(x=UMAP_1,y=UMAP_2,color=expression)) + 
+  geom_point(size=.25) + 
+  facet_wrap(~gene,ncol=3) + 
+  scale_color_gradient(low='cornflowerblue',high='darkred', 
+                       na.value='gray80', 
+                       lim=c(1.e-6,NA), 
+                       guide=guide_colorbar(title.position='right',
+                                            title.theme=element_text(angle=90,hjust=.5,vjust=.5))) +
+  geom_segment(data=cbind(anno,data.frame(gene=factor('SFTPC',levels=markers))),
+               aes(x=x,y=y,xend=xend,yend=yend,gene=gene),
+               arrow=arrow(length=unit(1,'mm')),colour='black',size=.5) + 
+  geom_text(data=cbind(anno_text,data.frame(gene=factor('SFTPC',levels=markers))),
+            aes(x=x,y=y,label=label,angle=angle,gene=gene),colour='black',size=2) + 
+  coord_fixed() +
+  theme_void()
+```
+
+# Figure 3 + S3
+
+```{r get_data_fig3}
+alveolar <- readRDS('data/seurat/alveolar_organoids.rds')
+bronchial <- readRDS('data/seurat/bronchial_organoids.rds')
+
+cols <- c('orig.ident','type','celltype',
+          'UMAP_1','UMAP_2',
+          'virus','pct.SCoV2',
+          'KRT15','MUC5B','SFTPC','FOXJ1',
+          'ACE2','TMPRSS2','FURIN','DPP4',
+          'NRP1','BSG','KREMEN1','ASGR1')
+
+organoid_md <- rbind(FetchData(alveolar,cols),
+                     FetchData(bronchial,cols))
+```
+
+Figure 3H
+
+```{r Fig_3H,fig.width=5,fig.height=3}
+ggplot(organoid_md %>% dplyr::arrange(type,virus),
+       aes(x=UMAP_1,y=UMAP_2,color=ifelse(virus=='SCoV2','SARS-CoV-2','none'))) +
+  geom_point(size=.5) +
+  scale_color_manual(values=strain_colors,na.value='gray80') +
+  facet_wrap(~type,ncol=2,scales='free') +
+  theme_void() + 
+  theme(strip.background=element_blank(),
+        aspect.ratio=1,
+        legend.position=c(.9,.2),
+        legend.key.size=unit(3,'mm')) +
+  guides(color = guide_legend(override.aes = list(size=4))) +
+  labs(color='')
+```
+
+Figure S3B
+
+```{r Fig_S3B,fig.width=5,fig.height=3}
+ggplot(organoid_md,aes(x=UMAP_1,y=UMAP_2,color=celltype)) + 
+  geom_point(size=.5) +
+  geom_text_repel(data=organoid_md %>%
+                    dplyr::group_by(type,celltype) %>%
+                    dplyr::summarise(x=median(UMAP_1),
+                                     y=median(UMAP_2)),
+                  aes(x=x,y=y,label=celltype),color='black',size=3) +
+  scale_color_manual(values=organoid_cell_type_colors) +
+  facet_wrap(~type,ncol=2,scales='free') +
+  theme_void() + 
+  theme(strip.background=element_blank(),
+        aspect.ratio=1,
+        legend.position=c(.9,.2),
+        legend.key.size=unit(3,'mm')) +
+  guides(color = guide_legend(override.aes = list(size=4))) +
+  labs(color='')
+```
+
+Figure S3C
+
+```{r Fig_S3C,fig.width=3.,fig.height=4}
+ggplot(organoid_md %>%
+         dplyr::select(UMAP_1,UMAP_2,type,KRT15,MUC5B,SFTPC,FOXJ1) %>%
+         gather(gene,expression,-c(UMAP_1,UMAP_2,type)) %>%
+         dplyr::mutate(gene=factor(gene,levels=c('KRT15','MUC5B','SFTPC','FOXJ1'))) %>%
+         dplyr::arrange(gene,expression),
+       aes(x=UMAP_1,y=UMAP_2,color=expression)) + 
+  geom_point(size=.25) + 
+  facet_grid(gene~type,switch='y',scales='free') +
+  scale_color_gradient(low='cornflowerblue',high='darkred', 
+                       na.value='gray80', 
+                       lim=c(1.e-6,NA), 
+                       guide=guide_colorbar(title.position='right',
+                                            title.theme=element_text(angle=90,hjust=.5,vjust=.5))) +
+  theme_void() +
+  theme(legend.key.size=unit(4,'mm'),
+        aspect.ratio=1)
+```
+
+Figure S3D
+
+```{r Fig_S3D,fig.width=3.5,fig.height=6}
+ggplot(organoid_md %>%
+         dplyr::select(UMAP_1,UMAP_2,type,ACE2,TMPRSS2,FURIN,BSG,NRP1,KREMEN1,ASGR1) %>%
+         gather(gene,expression,-c(UMAP_1,UMAP_2,type)) %>%
+         dplyr::mutate(gene=factor(gene,levels=c('ACE2','KREMEN1','ASGR1','TMPRSS2','FURIN','BSG','NRP1'))) %>%
+         dplyr::arrange(gene,expression),
+       aes(x=UMAP_1,y=UMAP_2,color=expression)) + 
+  geom_point(size=.25) + 
+  facet_grid(gene~type,switch='y',scales='free') +
+  scale_color_gradient(low='cornflowerblue',high='darkred', 
+                       na.value='gray80', 
+                       lim=c(1.e-6,NA), 
+                       guide=guide_colorbar(title.position='right',
+                                            title.theme=element_text(angle=90,hjust=.5,vjust=.5))) +
+  theme_void() +
+  theme(legend.key.size=unit(4,'mm'),
+        aspect.ratio=1)
+```
+
+Figure S3E
+
+```{r Fig_S3E,fig.width=5.5,fig.height=2}
+p1 <- organoid_md %>% 
+  dplyr::group_by(orig.ident,type,celltype) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::group_by(orig.ident,type) %>%
+  dplyr::mutate(frac=n/sum(n)) %>%
+  dplyr::group_by(celltype,type) %>%
+  dplyr::summarise(mean_frac=mean(frac),
+                   se_frac=sd(frac)/sqrt(n())) %>%
+  ggplot(aes(x=celltype,y=100*mean_frac,
+             ymin=100*(mean_frac-se_frac),
+             ymax=100*(mean_frac+se_frac),
+             fill=celltype)) +
+  geom_col(width=1) + 
+  geom_errorbar(size=.5,width=.0,color='gray30') +
+  theme_classic() +
+  facet_wrap(~type,ncol=2) +
+  labs(x='',y='% cells') +
+  scale_fill_manual(values=organoid_cell_type_colors) +
+  theme(legend.position='none') +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        strip.background = element_rect(fill = NA, colour = NA))
+
+p2 <- organoid_md %>% 
+  dplyr::group_by(orig.ident,type,virus) %>%
+  dplyr::mutate(virus=ifelse(virus=='SCoV2','SARS-CoV-2','none')) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::group_by(orig.ident,type) %>%
+  dplyr::mutate(frac=n/sum(n)) %>%
+  dplyr::group_by(virus,type) %>%
+  dplyr::summarise(mean_frac=mean(frac),
+                   se_frac=sd(frac)/sqrt(n())) %>%
+  dplyr::filter(virus=='SARS-CoV-2') %>%
+  ggplot(aes(x=type,y=100*mean_frac,
+             ymin=100*(mean_frac-se_frac),
+             ymax=100*(mean_frac+se_frac),
+             fill=virus)) +
+  geom_col(width=1) + 
+  geom_errorbar(size=.5,width=.0,color='gray30') +
+  theme_classic() +
+  labs(x='',y='% SARS-CoV-2+') +
+  scale_fill_manual(values=strain_colors) +
+  theme(legend.position='none') +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        strip.background = element_rect(fill = NA, colour = NA))
+
+p3 <- organoid_md %>% 
+  dplyr::mutate(ACE2=ifelse(ACE2 > 0,'ACE2+','ACE2-')) %>%
+  dplyr::group_by(orig.ident,type,ACE2) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::group_by(orig.ident,type) %>%
+  dplyr::mutate(frac=n/sum(n)) %>%
+  dplyr::group_by(ACE2,type) %>%
+  dplyr::summarise(mean_frac=mean(frac),
+                   se_frac=sd(frac)/sqrt(n())) %>%
+  dplyr::filter(ACE2=='ACE2+') %>%
+  ggplot(aes(x=type,y=100*mean_frac,
+             ymin=100*(mean_frac-se_frac),
+             ymax=100*(mean_frac+se_frac))) +
+  geom_col(width=1,fill='gray50') + 
+  geom_errorbar(size=.5,width=.0,color='gray30') +
+  theme_classic() +
+  labs(x='',y='% ACE2+') +
+  theme(legend.position='none') +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        strip.background = element_rect(fill = NA, colour = NA))
+
+plot_grid(p1,p2,p3,align='vh',ncol=3,rel_widths=c(.55,.225,.225))
+```
+
+# Figure 6 + S6
+
+```{r get_data_fig6}
+DE_results <- read.csv('data/differential_expression/bulkRNAseq_results.csv',row.names=1,header=1)
+rld <- readRDS('data/differential_expression/bulkRNAseq_rld.rds')
+
+subgenomic_reads <- sapply(c('MERS-CoV','SARS-CoV','SARS-CoV-2'), function(x) read.csv(paste0('data/read_stats/bulkRNAseq_',x,'_subgenomic_reads.csv'),header=1,row.names=1),
+                           USE.NAMES=TRUE,simplify=FALSE)
+
+idx_stats <- read.csv('data/read_stats/bulkRNAseq_idxstats.txt',row.names=1,header=1)
+
+msig <- tmodImportMSigDB('msigdb_v7.2.xml')
+lung_all <- readRDS('data/seurat/lung_combined_all.rds')
+
+pseudobulk_explant <- read.csv('data/differential_expression/lung_explant_pseudobulk_DE.csv',row.names=1) %>%
+  dplyr::mutate(contrast=infect,
+                origin='explant') %>%
+  dplyr::select(-infect)
+pseudobulk_autopsy <- read.csv('data/differential_expression/lung_autopsy_pseudobulk_DE.csv',row.names=1) %>%
+  dplyr::mutate(contrast=condition,
+                origin='autopsy') %>%
+  dplyr::select(-condition)
+pseudobulk <- rbind(pseudobulk_explant,pseudobulk_autopsy)
+
+loglog_explant <- read.csv('data/differential_expression/lung_explant_regression_DE.csv',row.names=1)  %>%
+  dplyr::filter(abs(estimate) < 20) %>%
+  dplyr::mutate(contrast=infect,
+                origin='explant') %>%
+  dplyr::select(-infect)
+loglog_autopsy <- read.csv('data/differential_expression/lung_autopsy_regression_DE.csv',row.names=1)%>%
+  dplyr::filter(abs(estimate) < 20) %>%
+  dplyr::mutate(contrast=condition,
+                origin='autopsy') %>%
+  dplyr::select(-condition)
+ 
+loglog <- rbind(loglog_explant,loglog_autopsy)
+```
+
+Table S4
+
+```{r Table_S4}
+wb <- createWorkbook()
+addWorksheet(wb, sheetName='IAV DEGs')
+writeData(wb, sheet='IAV DEGs',
+          x=DE_results %>% dplyr::filter(infect=='IAV',padj < .05),
+          rowNames=TRUE)
+addWorksheet(wb, sheetName='MERS-CoV DEGs')
+writeData(wb, sheet='MERS-CoV DEGs',
+          x=DE_results %>% dplyr::filter(infect=='MERS-CoV',padj < .05),
+          rowNames=TRUE)
+addWorksheet(wb, sheetName='SARS-CoV DEGs')
+writeData(wb, sheet='SARS-CoV DEGs',
+          x=DE_results %>% dplyr::filter(infect=='SARS-CoV',padj < .05),
+          rowNames=TRUE)
+addWorksheet(wb, sheetName='SARS-CoV-2 DEGs')
+writeData(wb, sheet='SARS-CoV-2 DEGs',
+          x=DE_results %>% dplyr::filter(infect=='SARS-CoV-2',padj < .05),
+          rowNames=TRUE)
+saveWorkbook(wb, file = file.path("data/tables/Table_S4.xlsx"), overwrite=TRUE)
+```
+
+Figure S6A
+
+```{r Fig_S6A,fig.width=6.5,fig.height=2.5}
+chroms <- list(human=colnames(idx_stats)[1:639],
+               `IAV`=colnames(idx_stats)[642:649],
+               `MERS-CoV`='NC_019843.3',
+               `SARS-CoV`='NC_004718.3',
+               `SARS-CoV-2`='NC_045512.2')
+
+viral_frac <- lapply(chroms[2:5], function(y) apply(idx_stats[1:20,],1,
+                    function(x) 100*sum(x[y])/sum(x,na.rm=TRUE))) %>%
+  as.data.frame()
+
+colnames(viral_frac) <- names(chroms)[2:5]
+
+p1 <- ggplot(viral_frac %>%
+         gather(treatment,frac) %>%
+         dplyr::filter(!is.na(frac)),
+       aes(x=treatment,y=frac,fill=treatment)) + 
+  geom_boxplot(outlier.shape=NA) + 
+  geom_jitter(width=0.25,size=.5) + 
+  scale_fill_manual(values=strain_colors) +
+  theme_classic() + 
+  coord_cartesian(clip='off') + 
+  scale_y_log10() + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5)) + 
+  labs(x='', y='% viral reads',fill='infection')
+p2 <- ggplot(do.call(rbind,subgenomic_reads) %>% 
+               tibble::rownames_to_column('tmp') %>% 
+               dplyr::mutate(treatment=gsub('\\..*','',tmp)) %>%
+               dplyr::mutate(celltype=ifelse(grepl('lung',tmp),'human lung','AT2'),
+                             treatment=ifelse(grepl('AT2',tmp),
+                                              ifelse(grepl('6dpi',tmp),'SARS-CoV-2','control'),treatment)) %>%
+               dplyr::filter(celltype=='human lung'),
+             aes(x=treatment,y=CPM,fill=treatment)) + 
+  geom_boxplot(outlier.shape=NA) + 
+  geom_jitter(width=0.25,size=.5) + 
+  scale_fill_manual(values=strain_colors) +
+  theme_classic() +
+  coord_cartesian(clip='off') + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5)) + 
+  labs(x='', y='CPM',title='',fill='infection')
+
+plot_grid(p1,p2,ncol=2,align='vh')
+```
+
+Figure S6B
+
+```{r Fig_S6B,fig.width=7,fig.height=4.5}
+alpha <- .05
+log2fc_cutoff <- 0
+
+sample_anno <- colData(rld)[,c('patient','treatment')]
+sample_anno$patient <- factor(revalue(sample_anno$patient,donor_map[as.character(unique(sample_anno$patient))]),
+                              levels=c('pat1','pat2','pat3','pat4'))
+sample_anno$treatment <- revalue(sample_anno$treatment,strain_map)
+
+all_genes <- row.names(assay(rld))
+
+gene_anno <- data.frame(sapply(unique(DE_results$infect), 
+                               function(x) DE_results %>% dplyr::filter(infect==x,gene_id %in% all_genes) %>%
+                                 dplyr::arrange(gene_id) %>%
+                                 dplyr::mutate(diff=ifelse(!is.na(padj) & (padj < alpha) & (abs(log2FoldChange) > log2fc_cutoff),
+                                                           log2FoldChange,0)) %>%
+                                 dplyr::pull(diff),USE.NAMES=TRUE),
+                        gene_id=all_genes,
+                        stringsAsFactors =FALSE) %>%
+  dplyr::left_join(DE_results[,c('gene_id','symbol','entrez')] %>% dplyr::distinct(gene_id,.keep_all=TRUE),by='gene_id') %>%
+  tibble::column_to_rownames('gene_id')
+colnames(gene_anno) <- c(unique(DE_results$infect),'gene_name','entrez')
+
+na_genes <- is.na(gene_anno$gene_name)
+gene_anno$gene_name[na_genes] <- row.names(gene_anno)[na_genes]
+
+show_genes <- row.names(gene_anno)[rowSums(gene_anno[,unique(DE_results$infect)] != 0) > 0]
+
+mat <- t(scale(t(assay(rld))))
+mat.corrected <- t(scale(t(removeBatchEffect(assay(rld), batch=colData(rld)$patient))))
+
+modules <- msig$MODULES %>%
+  dplyr::filter(Title %in% c('Hallmark interferon gamma response',
+                             'Hallmark interferon alpha response',
+                             'Hallmark tnfa signaling via nfkb')) %>%
+  dplyr::select(Title,ID)
+pathway_df <- apply(modules, 1, function(x) ifelse(gene_anno[show_genes,'gene_name'] %in%
+                                                     msig$MODULES2GENES[[x['ID']]],
+                                                   'member','no member')) %>% as.data.frame()
+colnames(pathway_df) <- c('TNFA/NFKB', 'Interferon A','Interferon G')
+row.names(pathway_df) <- show_genes
+pathway_colors <- lapply(pathway_df, function(x) c('member'='black','no member'='white'))
+pathway_va <- HeatmapAnnotation(df=pathway_df,
+                                which='row',
+                                show_annotation_name=TRUE,
+                                annotation_name_side='top',
+                                annotation_name_gp=gpar(fontsize=8),
+                                show_legend=FALSE,
+                                col=pathway_colors)
+
+
+diff_va <- HeatmapAnnotation(df=gene_anno[show_genes,] %>% 
+                               dplyr::mutate_if(is.numeric,function(x) ifelse(x < 0,'down',ifelse(x > 0,'up','nd'))) %>%
+                               dplyr::select(c(IAV,`MERS-CoV`,`SARS-CoV`,`SARS-CoV-2`)),
+                             which='row',
+                             show_annotation_name=TRUE,
+                             annotation_name_side='top',
+                             annotation_name_gp=gpar(fontsize=8),
+                             show_legend=FALSE,
+                             col=list(`IAV`=c('up'='red3','down'='blue3','nd'='white'),
+                                      `MERS-CoV`=c('up'='red3','down'='blue3','nd'='white'),
+                                      `SARS-CoV`=c('up'='red3','down'='blue3','nd'='white'),
+                                      `SARS-CoV-2`=c('up'='red3','down'='blue3','nd'='white')))
+
+ha <- HeatmapAnnotation(df=sample_anno,
+                        show_annotation_name=FALSE,
+                        show_legend=TRUE,
+                        annotation_legend_param=list(patient=list(at=c('pat1','pat2','pat3','pat4'),
+                                                                  labels=c('pat1','pat2','pat3','pat4')),
+                                                     treatment=list(at=c('mock','IAV','MERS-CoV',
+                                                                         'SARS-CoV','SARS-CoV-2'),
+                                                                    labels=c('mock','IAV','MERS-CoV',
+                                                                             'SARS-CoV','SARS-CoV-2'))),
+                        col=list(patient=unlist(donor_colors[as.character(unique(sample_anno$patient))]),
+                                 treatment=unlist(strain_colors[as.character(unique(sample_anno$treatment))])))
+
+
+inds <- which(gene_anno[show_genes,'gene_name'] %in% (gene_anno %>%
+                                                        gather(treatment,log2FoldChange,-gene_name,-entrez) %>%
+                                                        dplyr::filter(log2FoldChange!=0) %>%
+                                                        dplyr::group_by(sign(log2FoldChange)) %>%
+                                                        dplyr::top_n(wt=abs(log2FoldChange),n=20) %>%
+                                                        dplyr::pull(gene_name)))
+
+gene_va <- rowAnnotation(foo = anno_mark(at = inds, labels = gene_anno[show_genes,'gene_name'][inds],
+                                         labels_gp=gpar(fontsize=6)))
+
+dend <- as.dendrogram(hclust(dist(t(mat.corrected[show_genes,]))))
+samples <- colnames(mat.corrected)
+
+neworder <- c('lung_195V-mock1_1','lung_89C-mock1_1','lung_663D-mock1_1','lung_641D-mock1_1',
+              'lung_89C-S1_1','lung_641D-S1_1','lung_195V-S1_1','lung_663D-S1_1',
+              'lung_195V-S2_1','lung_89C-S2_1','lung_641D-S2_1','lung_663D-S2_1',
+              'lung_663D-EMC1_1','lung_641D-EMC1_1','lung_195V-EMC1_1','lung_89C-EMC2_1',            
+              'lung_195V-Panama1_1','lung_89C-Panama1_1','lung_641D-Panama1_1','lung_663D-Panama1_1')
+dend2 <- reorder(dend,wts=order(match(neworder, samples)),agglo.FUN=mean)
+                                                                               
+Heatmap(mat.corrected[show_genes,],
+        cluster_columns=dend2,
+        cluster_rows=TRUE,
+        show_row_names=FALSE,
+        show_column_names=FALSE,
+        show_row_dend=FALSE,
+        top_annotation=ha,
+        column_names_gp=gpar(fontsize=10),
+        name='z-score') + diff_va + pathway_va + gene_va
+```
+
+Figure S6C
+
+```{r Fig_S6C,fig.width=6,fig.height=2.5}
+interferons <- c('IFNA1','IFNA2','IFNA4','IFNA5','IFNA6','IFNA7','IFNA8','IFNA10','IFNA13','IFNA14', 
+                 'IFNA16','IFNA17','IFNA21','IFNB1','IFNW1','IFNK','IFNE','IFNG','IFNL1','IFNL2','IFNL3')
+take <- gene_anno[all_genes,'gene_name'] %in% interferons
+df <- do.call(rbind,lapply(names(DE_results),
+                           function(x) DE_results[[x]][all_genes,c('log2FoldChange','lfcSE',
+                                                                   'symbol','padj')][take,] %>%
+                             as.data.frame() %>%
+                             dplyr::mutate(treatment=x,
+                                           symbol=factor(symbol,levels=interferons))))
+
+p1 <- ggplot(df,aes(x=symbol,y=log2FoldChange,fill=treatment,
+                    ymin=log2FoldChange-lfcSE,
+                    ymax=log2FoldChange+lfcSE)) + 
+  geom_col(position=position_dodge()) + 
+  geom_errorbar(position=position_dodge(.9),size=.25,width=.25) +
+  scale_fill_manual(values=strain_colors) + 
+  labs(x='',y='log2 fold change') +
+  geom_text(position=position_dodge(.9),aes(y=1.2,label=stars.pval(padj)),color='black',size=2) + 
+  theme_classic() + 
+  theme(legend.key.size=unit(3,'mm')) +
+  coord_cartesian(clip='off',ylim=c(-1,1.5)) + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5)) + 
+  labs(fill='infection',color='')
+take <- gene_anno[all_genes,'gene_name'] %in% c('ACE2','TMPRSS2','BSG','FURIN')
+df <- do.call(rbind,lapply(names(DE_results),
+                           function(x) DE_results[[x]][all_genes,c('log2FoldChange','lfcSE',
+                                                                   'symbol','padj')][take,] %>%
+                             as.data.frame() %>%
+                             dplyr::mutate(treatment=x)))
+
+p2 <- ggplot(df,aes(x=symbol,y=log2FoldChange,fill=treatment,
+                    ymin=log2FoldChange-lfcSE,
+                    ymax=log2FoldChange+lfcSE)) + 
+  geom_col(position=position_dodge()) + 
+  geom_errorbar(position=position_dodge(.9),size=.25,width=.25) +
+  scale_fill_manual(values=strain_colors) + 
+  labs(x='',y='log2 fold change') + 
+  geom_text(aes(y=-.3,label=stars.pval(padj))) + 
+  theme_classic() + 
+  theme(legend.key.size=unit(3,'mm')) +
+  coord_cartesian(clip='off',ylim=c(-1,1.5)) + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5)) +
+  labs(fill='infection')
+
+plot_grid(p1+theme(legend.position='none',),p2,ncol=2,align='vh',rel_widths=c(.55,.45))
+```
+
+Table S5
+
+```{r Table_S5}
+wb <- createWorkbook()
+addWorksheet(wb, sheetName='pseudobulk DEGs explants')
+writeData(wb, sheet='pseudobulk DEGs explants',
+          x=pseudobulk %>% dplyr::filter((padj < .05) & (origin=='explant')) %>% dplyr::select(-origin) %>% 
+            dplyr::mutate(contrast=revalue(contrast,strain_map)),
+          rowNames=FALSE)
+addWorksheet(wb, sheetName='pseudobulk DEGs autopsy')
+writeData(wb, sheet='pseudobulk DEGs autopsy',
+          x=pseudobulk %>% dplyr::filter((padj < .05) & (origin=='autopsy')) %>% dplyr::select(-origin) %>%
+            dplyr::mutate(contrast=revalue(contrast,condition_map)),
+          rowNames=FALSE)
+saveWorkbook(wb, file='tables/Table_S5.xlsx', overwrite=TRUE)
+```
+
+Table S6
+
+```{r Table_S6}
+wb <- createWorkbook()
+addWorksheet(wb, sheetName='loglog DEGs explants')
+writeData(wb, sheet='loglog DEGs explants',
+          x=loglog %>% dplyr::filter((padj < .05) & (origin=='explant') & (cluster=='macrophages')) %>%
+            dplyr::select(-c(origin,cluster)) %>%
+            dplyr::mutate(contrast=revalue(contrast,strain_map)),
+          rowNames=FALSE)
+saveWorkbook(wb, file='tables/Table_S6.xlsx', overwrite=TRUE)
+```
+
+Figure 6A
+
+```{r Fig_6A,fig.width=8,fig.height=4}
+anno <- data.frame(x=c(-13,-13),
+                   xend=c(-8,-13),
+                   y=c(-15,-15),
+                   yend=c(-15,-10))
+anno_text <- data.frame(x=c(-10.5,-14),
+                        y=c(-16,-12.5),
+                        label=c('UMAP 1','UMAP 2'),
+                        angle=c(0,90))
+
+DimPlot(lung_all,label=TRUE,repel=TRUE, split.by='origin',label.size=3) + 
+  scale_color_manual(values=lung_cell_type_colors) + 
+  theme_void() + 
+  theme(legend.position='none')  + 
+  geom_segment(data=cbind(anno,data.frame(origin=factor('explant',levels=c('explant','autopsy')))),
+               aes(x=x,y=y,xend=xend,yend=yend),
+            arrow=arrow(length=unit(2,'mm')),colour='black',size=1) + 
+  geom_text(data=cbind(anno_text,data.frame(origin=factor('explant',levels=c('explant','autopsy')))),
+            aes(x=x,y=y,label=label,angle=angle),size=3) + 
+  coord_fixed()
+```
+
+Figure 6B
+
+```{r Fig_6B,fig.width=4.5,fig.height=4}
+anno_box <- data.frame(x=c(-5,-5,-5,1),
+                       xend=c(1,1,-5,1),
+                       y=c(-15,-11,-15,-15),
+                       yend=c(-15,-11,-11,-11))
+
+ggplot(FetchData(lung_all,c('UMAP_1','UMAP_2','virus','infect','origin')) %>%
+         dplyr::filter((infect!='control') & (origin=='explant')) %>%
+         dplyr::mutate(pos=ifelse(virus!='none',.75,.25),
+                       virus=revalue(virus,strain_map),
+                       infect=revalue(infect,strain_map)) %>%
+         dplyr::arrange(pos),
+       aes(x=UMAP_1,y=UMAP_2,color=virus,size=pos)) +
+  geom_point(size=.5) +
+  theme_void() + 
+  scale_color_manual(values=strain_colors,breaks=c('IAV','MERS-CoV','SARS-CoV','SARS-CoV-2')) +
+  guides(color = guide_legend(override.aes = list(size=4))) +
+  scale_size_identity(guide='none') +
+  geom_segment(data=cbind(anno,data.frame(infect='SARS-CoV')),
+               aes(x=x,y=y,xend=xend,yend=yend),
+               arrow=arrow(length=unit(1,'mm')),colour='black',size=.5) + 
+  geom_segment(data=cbind(anno_box,data.frame(infect='SARS-CoV-2')),
+               aes(x=x,y=y,xend=xend,yend=yend),
+               colour='black',size=.25) + 
+  geom_text(data=cbind(anno_text,data.frame(infect='SARS-CoV')),
+            aes(x=x,y=y,label=label,angle=angle),colour='black',size=2) + 
+  theme(legend.position='none') +
+  labs(color='') + 
+  facet_wrap(~infect,ncol=2) + #,strip.position='left') +
+  coord_fixed()
+```
+
+```{r Fig_6B_inset,fig.width=3,fig.height=1.5}
+tmp <- FetchData(lung_all,c('UMAP_1','UMAP_2','ACE2','virus','origin')) %>%
+  dplyr::filter(origin=='explant') %>%
+  dplyr::arrange(ACE2)
+ggplot(tmp, aes(x=UMAP_1,y=UMAP_2,color=ifelse(ACE2 > 0,'ACE2+',ifelse(virus=='SCoV2','virus+','ACE2-')))) + 
+  geom_point(size=1,pch=19) + 
+  geom_point(data=tmp %>% dplyr::filter(virus=='SCoV2'), size=1, pch=19) +
+  #            size=1.5,fill=strain_colors[['SARS-CoV-2']],pch=21, legend=FALSE) +
+  geom_segment(data=anno_box,
+               aes(x=x,y=y,xend=xend,yend=yend),
+               colour='black',size=.25) + 
+  scale_color_manual(values=c('ACE2+'='cornflowerblue','ACE2-'='gray80','virus+'=strain_colors[['SARS-CoV-2']])) +
+  guides(color = guide_legend(override.aes = list(size=2,pch=19))) +
+  theme_void() +
+  labs(color='') +
+  theme(legend.key.height=unit(2,'mm')) +
+  xlim(c(min(anno_box$x),max(anno_box$x))) + 
+  ylim(c(min(anno_box$y),max(anno_box$y))) +
+  coord_fixed()
+```
+
+Figure 6D
+
+```{r Fig_6D,fig.width=12,fig.height=5}
+FetchData(lung_all,c('orig.ident','origin','infect','condition','cluster',c('ACE2','BSG','NRP1','TMPRSS2','FURIN','DPP4'))) %>%
+  dplyr::filter(cluster %in% c('AT1','AT2','basal / secretory','monocytes','macrophages','endothelial','T cells','stromal','fibroblasts')) %>%
+  dplyr::mutate(infect=revalue(infect,strain_map),
+                contrast=factor(ifelse(origin=='explant',infect,condition),
+                                levels=c('control','IAV','MERS-CoV','SARS-CoV','SARS-CoV-2','acute','prolonged'))) %>%
+  gather(gene,expression,-c(infect,orig.ident,contrast,condition,origin,cluster)) %>%
+  dplyr::mutate(gene=factor(gene,levels=c('ACE2','BSG','NRP1','TMPRSS2','FURIN','DPP4')),
+                cluster=revalue(cluster,c('basal / secretory'='basal\nsecretory',
+                                          'endothelial / lymphatic'='endothelial\nlymphatic',
+                                          'basophilic / mast'='basophilic\nmast'))) %>%
+  dplyr::group_by(orig.ident,contrast,origin,cluster,gene) %>% 
+  dplyr::summarise(expression=mean(expression)) %>%
+  dplyr::group_by(contrast,origin,cluster,gene) %>% 
+  dplyr::summarise(mean=mean(expression),sd=sd(expression)) %>%
+  ggplot(aes(x=origin,y=mean,ymin=mean-sd/2,ymax=mean+sd/2,fill=contrast)) +
+  geom_col(width=.8,position=position_dodge(.8,preserve='single')) + 
+  geom_errorbar(size=.5,width=.0,color='gray30',
+                position=position_dodge(.8,preserve='single')) +
+  facet_grid(gene~cluster,space='free_x',scales='free_y') +
+  theme_classic() +
+  scale_fill_manual(values=c(condition_colors,strain_colors),
+                    guide=guide_legend(ncol=1,
+                                       title.theme=element_blank())) +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.length.x = unit(0,'mm'),
+        legend.position='right',
+        legend.key.size=unit(3,'mm'),
+        strip.background=element_blank()) +
+  labs(x='',y='mean expression',fill='')
+```
+
+Figure S6D
+
+```{r Fig_S6D, fig.width=2.5, fig.height=2}
+ggplot(lung_all@meta.data %>%
+         dplyr::mutate(positive=virus!='none',
+                       contrast=factor(ifelse(origin=='explant',
+                                              revalue(infect,strain_map),
+                                              revalue(condition,condition_map)),
+                                levels=c('control','IAV','MERS-CoV','SARS-CoV','SARS-CoV-2',
+                                         'acute','prolonged'))) %>%
+         dplyr::group_by(orig.ident,origin,contrast) %>%
+         dplyr::summarise(n=n(),pos=sum(positive)) %>% 
+         dplyr::mutate(frac=pos/n),
+       aes(x=contrast,fill=contrast,color=contrast,y=frac)) + 
+  geom_boxplot(position=position_dodge(.7),width=.7,outlier.shape=NA) + 
+  geom_point(size=.25,position=position_dodge(.7),color='black') + 
+  theme_classic() +
+  facet_grid(.~origin,scales='free_x',space='free_x') +
+  labs(x='',y='fraction\nvirus-positive') + 
+  scale_fill_manual(values=c(strain_colors,condition_colors)) +
+  scale_color_manual(values=c(strain_colors,condition_colors)) + 
+  theme(legend.position='none') +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        strip.background = element_rect(fill = NA, colour = NA))
+```
+
+Figure 6C
+
+```{r Fig_6C, fig.width=3.5, fig.height=7.5}
+tmp <- lung_all@meta.data %>%
+  dplyr::filter((condition=='acute') | (infect=='SCoV2')) %>%
+  dplyr::mutate(positive=virus!='none') %>%
+  dplyr::group_by(orig.ident,origin,cluster) %>%
+  dplyr::summarise(n=n(),pos=sum(positive)) %>% 
+  dplyr::mutate(frac=pos/n) %>%
+  dplyr::group_by(origin,cluster) %>%
+  dplyr::summarise(mean_frac=mean(frac),sd_frac=sd(frac)) %>%
+  myspread(origin,c(mean_frac,sd_frac))
+p1 <- ggplot(tmp,aes(x=explant_mean_frac,
+               xmin=explant_mean_frac-explant_sd_frac/2,
+               xmax=explant_mean_frac+explant_sd_frac/2,
+               y=autopsy_mean_frac,
+               ymin=autopsy_mean_frac-autopsy_sd_frac/2,
+               ymax=autopsy_mean_frac+autopsy_sd_frac/2,
+               fill=cluster,color=cluster,label=cluster)) + 
+  geom_point(size=3) + 
+  geom_errorbar() + 
+  geom_errorbarh() +
+  geom_text_repel(data=tmp %>% 
+                    dplyr::filter((autopsy_mean_frac > .4)),
+                  hjust=0,vjust=0, size=3) +
+  scale_fill_manual(values=lung_cell_type_colors) + 
+  scale_color_manual(values=lung_cell_type_colors) + 
+  theme_classic() +
+  coord_fixed(xlim=c(0,.65),ylim=c(0,.65)) +
+  annotate(geom='text',x=.6,y=.05,
+           label=paste0('R=',signif(cor(tmp$autopsy_mean_frac,tmp$explant_mean_frac,use='na.or.complete'),2)),
+           hjust=1,size=3.5) +
+  theme(legend.position='none')  + 
+  labs(x='fraction virus positive (explants)',
+       y='fraction virus positive (autopsy)')
+
+tmp2 <- list()
+for (og in grep('SCoV2|akut',unique(lung_all$orig.ident),value=TRUE)) {
+  if (grepl('lung',og)) {
+    dge <- Read10X_h5(paste0('data/explant/cellranger/', gsub('-','_',og),'_filtered.h5'))
+  } else {
+    dge <- Read10X_h5(paste0('data/autopsy/cellranger/', og,'_filtered.h5'))
+  }
+  cells <- intersect(gsub('.*_','',Cells(lung_all)[lung_all$orig.ident==gsub('_','-',og)]),colnames(dge))
+  SCoV2_genes <- grep('^SCoV2',row.names(dge),value=TRUE)
+  tmp2[[og]] <- data.frame(cells=paste0(gsub('_','-',og),'_',cells),pct.SCoV2_pre=100*Matrix::colSums(dge[SCoV2_genes,cells])/Matrix::colSums(dge[,cells]))
+}
+
+tmp3 <- AddMetaData(lung_all,do.call(rbind,tmp2) %>% 
+                      tibble::remove_rownames() %>% 
+                      tibble::column_to_rownames('cells'))@meta.data %>%
+  dplyr::filter((condition=='acute') | (infect=='SCoV2')) %>%
+  dplyr::mutate(pre.filter=pct.SCoV2_pre > 0,
+                post.filter=pct.SCoV2 > 0) %>%
+  dplyr::group_by(orig.ident,origin,cluster) %>%
+  dplyr::summarise(n=n(),
+                   post.filter=sum(post.filter,na.rm=TRUE),
+                   pre.filter=sum(pre.filter,na.rm=TRUE)) %>% 
+  dplyr::mutate(pre.frac=pre.filter/n,
+                post.frac=post.filter/n) %>%
+  dplyr::group_by(origin,cluster) %>%
+  dplyr::summarise(mean_pre=mean(pre.frac,na.rm=TRUE),sd_pre=sd(pre.frac,na.rm=TRUE),
+                   mean_post=mean(post.frac,na.rm=TRUE),sd_post=sd(post.frac,na.rm=TRUE)) 
+
+p2 <- ggplot(tmp3,aes(x=mean_pre,
+                      xmin=mean_pre-sd_pre/2,
+                      xmax=mean_pre+sd_pre/2,
+                      y=mean_post,
+                      ymin=mean_post-sd_post/2,
+                      ymax=mean_post+sd_post/2,
+                      fill=cluster,color=cluster,label=cluster,shape=origin)) + 
+  geom_point(size=3) + 
+  geom_errorbar(size=.25) + 
+  geom_errorbarh(size=.25) +
+  geom_text_repel(data=tmp3 %>%
+                    dplyr::filter(cluster=='macrophages'),
+                  hjust=0,vjust=0, size=3) +
+  scale_fill_manual(values=lung_cell_type_colors,guide=FALSE) + 
+  scale_color_manual(values=lung_cell_type_colors,guide=FALSE) + 
+  scale_shape_manual(values=c('explant'=16,'autopsy'=15),
+                     labels=c(paste0('explants: R=',signif(cor(tmp3[tmp3$origin=='explant','mean_pre'],
+                                                               tmp3[tmp3$origin=='explant','mean_post'],use='na.or.complete'),3)),
+                              paste0('autopsy: R=',signif(cor(tmp3[tmp3$origin=='autopsy','mean_pre'],
+                                                              tmp3[tmp3$origin=='autopsy','mean_post'],use='na.or.complete'),3))),
+                     guide=guide_legend(ncol=1)) +
+  scale_x_continuous(limits=c(0,.9)) + 
+  scale_y_continuous(limits=c(0,.9)) +
+  coord_fixed() + 
+  theme_classic() +
+  labs(x='fraction virus positive (pre-filtering)',
+       y='fraction virus positive (post-filtering)',
+       shape='') +
+  theme(legend.position=c(0,1),
+        legend.justification=c(0,1))
+
+plot_grid(p2,p1,ncol=1,align='vh')
+```
+
+Figure S6F
+
+```{r Fig_S6F, fig.width=8,fig.height=10, results='asis'}
+clusters <- c('AT1','AT2','monocytes','macrophages','dendritic', 'T cells', 'NK cells','endothelial','fibroblasts')
+
+genes <- pseudobulk %>%
+   dplyr::filter(cluster %in% clusters) %>%
+  dplyr::filter(!grepl('^H3N2|^MERS|^SCoV1|^SCoV2',gene_name)) %>%
+  dplyr::filter(!(is.na(padj)) & (padj < .05)) %>%
+  dplyr::filter(gene_name %in% c('SFTPB','BCAT1','GLDN','IL1R2','DDX24','OTUD4','POSTN','DEFB1','APOBEC3A','TNFSF10','UBE2L6','TRIM22','IFIT2','ISG15',
+                                 'IFI6','IFIT3','OAS3','MX2','FSTL4','JUN','FOSB','IFITM3', 'CCL4', 'C15orf48', 'MX1', 'IFIT1', 'IFIT2', 'CXCL11',
+                                 'TNF', 'IL6', 'NFKBIA',  'CCL2', 'CCL3', 'CXCL10')) %>% #, 'TGFB1','SPP1','CCL18','LGMN')) %>%
+  dplyr::pull(gene_name) %>%
+  unique()
+
+df <- pseudobulk %>%
+  dplyr::filter(cluster %in% clusters) %>%
+  dplyr::filter(gene_name %in% genes) %>%
+  dplyr::mutate(group=paste0(cluster,'_',contrast))  %>%
+  dplyr::select(group,gene_name,log2FoldChange) %>%
+  spread(group,log2FoldChange) %>%
+  tibble::column_to_rownames('gene_name')
+
+df[is.na(df)] <- 0
+hc <- hclust(dist(df))
+gene.order <- row.names(df)[order.hclust(hc)]
+
+minp <- pseudobulk %>% 
+  dplyr::filter((cluster %in% clusters) & (gene_name %in% genes)) %>% 
+  dplyr::pull(padj) %>% 
+  min(na.rm=TRUE) %>%
+  -log10(.)
+
+pl1 <- ggplot(pseudobulk %>%
+               dplyr::filter(cluster %in% clusters) %>%
+               dplyr::filter(gene_name %in% genes) %>%
+               dplyr::mutate(gene=factor(gene_name,levels=gene.order),
+                             cluster=factor(cluster,levels=clusters),
+                             contrast=factor(revalue(contrast,c(strain_map,condition_map)),
+                                             levels=c('IAV', 'MERS-CoV','SARS-CoV','SARS-CoV-2',
+                                                      'acute','prolonged'))),
+             aes(x=gene,y=contrast,size=-log10(padj),color=log2FoldChange)) +
+  geom_rect(ymin=4.55,ymax=6.5,
+            xmin=.5, xmax=length(gene.order)+.5,
+            color=origin_colors[['autopsy']], alpha=.75, fill=NA,size=0.5) +
+  geom_rect(ymin=.5,ymax=4.45,
+            xmin=.5, xmax=length(gene.order)+.5,
+            color=origin_colors[['explant']], alpha=.75, fill=NA,size=0.5) +
+  geom_point() +
+  scale_size_continuous(name='adj. p-value',
+                        breaks=c(5,10,15),
+                        labels=c(1e-5,1e-10,1e-15),
+                        limits=c(0,minp)) +
+  scale_color_gradient2(low='blue3',mid='gray',high='red3',
+                        limits=c(-3,3),oob=scales::squish) +
+  coord_cartesian(clip = 'off') +
+  facet_grid(cluster~.) +
+  theme_minimal(base_size=10) +
+  guides(color=guide_colorbar(barheight=4)) +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1)) +
+  labs(x='',y='',color='log2 fold\nchange')
+
+pg1 <- ggplotGrob(pl1)
+for(i in which(grepl("strip-r", pg1$layout$name))){
+  pg1$grobs[[i]]$layout$clip <- "off"
+}
+
+grid::grid.draw(pg1)
+```
+
+Figure 6E
+
+```{r Fig_6E,fig.width=12,fig.height=4}
+inflammatory_pws <- c('Go macrophage activation',
+                      'Go macrophage differentiation',
+                      'Go macrophage apoptotic process',
+                      'Go cytokine production',
+                      'Go cytokine secretion',
+                      'Go chemokine production',
+                      'Go inflammatory response',
+                      'Go antigen processing and presentation',
+                      'Go interleukin 1 production',
+                      'Go phagocytosis',
+                      'Reactome interferon signaling',
+                      'Reactome interferon alpha beta signaling',
+                      'Reactome interferon gamma signaling',
+                      'Reactome oas antiviral response',
+                      'Kegg rig i like receptor signaling pathway',
+                      'Hallmark tnfa signaling via nfkb')
+fibrosis_pws <- c('Go exocytosis',
+                  'Reactome extracellular matrix organization',
+                  'Go regulation of extracellular matrix organization',
+                  'Go response to wounding',
+                  'Wp lung fibrosis')
+
+lung_pws <- c(inflammatory_pws,fibrosis_pws)
+
+sel <- grepl(paste0(paste0('^',lung_pws,'$'),collapse='|'),msig$MODULES$Title)
+lung_pathways <- sapply(msig$MODULES[sel,]$ID, function(x) msig$MODULES2GENES[[x]])
+names(lung_pathways) <- gsub(' ','_',toupper(msig$MODULES[sel,'Title']))
+
+tmp <- AddModuleScore(lung_all,lung_pathways, name='pathways',assay='RNA')
+tmp <- tmp@meta.data[,grepl('pathways',colnames(tmp@meta.data))]
+colnames(tmp) <- names(lung_pathways)
+lung_all <- AddMetaData(lung_all,tmp)
+
+tmp2 <- FetchData(lung_all, c('infect','condition','origin','cluster',names(lung_pathways))) %>%
+  dplyr::filter(cluster %in% c('AT2','macrophages','monocytes','endothelial','fibroblasts')) %>%
+  dplyr::mutate(contrast=factor(ifelse(origin=='explant',revalue(infect,strain_map),condition), 
+                                levels=c('control','IAV','MERS-CoV','SARS-CoV','SARS-CoV-2','acute','prolonged'))) %>%
+  dplyr::group_by(origin,cluster,contrast) %>%
+  dplyr::summarise_if(is.numeric,mean) %>%
+  dplyr::mutate_if(is.numeric,scale)
+
+df1 <- tmp2[,c('contrast','origin','cluster',gsub(' ','_',toupper(inflammatory_pws)))] %>% 
+  gather(pathway,score,-c(contrast,origin,cluster)) %>%
+  dplyr::mutate(cond=paste(contrast,origin,cluster,sep='_')) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(pathway,score,cond) %>%
+  spread(cond,score) %>%
+  tibble::column_to_rownames('pathway')
+hc1 <- hclust(dist(df1))
+
+df2 <- tmp2[,c('contrast','origin','cluster',gsub(' ','_',toupper(fibrosis_pws)))] %>% 
+  gather(pathway,score,-c(contrast,origin,cluster)) %>%
+  dplyr::mutate(cond=paste(contrast,origin,cluster,sep='_')) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(pathway,score,cond) %>%
+  spread(cond,score) %>%
+  tibble::column_to_rownames('pathway')
+hc2 <- hclust(dist(df2))
+
+pw.order <- c(gsub('_',' ',row.names(df1)[order.hclust(hc1)]),
+              gsub('_',' ',row.names(df2)[order.hclust(hc2)]))
+
+tmp2 %>%
+  gather(pathway,score,-c(contrast,origin,cluster)) %>%
+  dplyr::mutate(pathway=factor(gsub('_',' ',pathway),levels=rev(pw.order))) %>%
+  ggplot(aes(x=contrast,y=pathway,fill=score)) +
+  geom_tile() + 
+  theme_minimal() +
+  ggh4x::facet_nested(~cluster+origin,scales='free_x',space='free_x',nest_line=TRUE) +
+  scale_fill_gradient2(low='blue3',mid='gray',high='red3',na.value='white') +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5),
+        legend.key.height=unit(5,'mm'),
+        legend.key.width=unit(3,'mm')) +
+  labs(x='',y='',fill='z-score')
+```
+
+Figure S6I
+
+```{r Fig_S6I,fig.width=4.5,fig.height=3.5}
+clust  <- 'macrophages'
+sub1 <- subset(lung_all, subset=(cluster==clust) & (origin=='explant'))
+st <- 'SCoV2'
+sub2 <- subset(sub1, subset=(infect==st))
+Idents(sub2) <- 'virus'
+tmp <- AverageExpression(sub2, assays='RNA', slot='counts')$RNA %>%
+  tibble::rownames_to_column('gene_name') %>%
+  dplyr::left_join(loglog %>%
+                     dplyr::filter((cluster==clust) & (contrast==st) & (origin=='explant')),
+                   by='gene_name') %>%
+  dplyr::mutate(estimate=ifelse(is.na(estimate),0,estimate),
+                padj=ifelse(is.na(padj),1,padj))
+
+genes_up <- loglog %>%
+  dplyr::filter((cluster==clust) & (contrast==st) & (origin=='explant')) %>%
+  dplyr::filter(!(is.na(padj)) & (padj < .01)) %>%
+  dplyr::slice_min(padj, n=20) %>%
+  dplyr::filter(estimate > 0) %>%
+  dplyr::pull(gene_name)
+
+genes_down <- loglog %>%
+  dplyr::filter((cluster==clust) & (contrast==st) & (origin=='explant')) %>%
+  dplyr::filter(!(is.na(padj)) & (padj < .01)) %>%
+  dplyr::slice_min(padj, n=20) %>%
+  dplyr::filter(estimate < 0) %>%
+  dplyr::pull(gene_name)
+
+ggplot(tmp, aes_string(x='none',
+                             y=st,
+                             color='estimate')) +
+  geom_point(size=.5,alpha=.5) +
+  geom_text_repel(data=tmp %>%
+                    dplyr::filter(gene_name %in% genes_up),
+                  aes(label=gene_name),
+                  color='red3',
+                  segment.size=.25,
+                  segment.alpha=.5,
+                  nudge_x=-.75,
+                  nudge_y=.75,
+                  size=2) +
+  geom_text_repel(data=tmp %>%
+                    dplyr::filter(gene_name %in% genes_down),
+                  aes(label=gene_name),
+                  color='blue3',
+                  segment.size=.25,
+                  segment.alpha=.5,
+                  nudge_x=.75,
+                  nudge_y=-.75,
+                  size=2) +
+  scale_y_log10() +
+  scale_x_log10() +
+  theme_classic() +
+  theme(title=element_text(size=10)) +
+  guides(color=guide_colorbar(barheight=4)) +
+  scale_color_gradient2(low='blue3',mid='gray',high='red3', limits=c(-2,2),oob=scales::squish) +
+  labs(x=paste('avg. expression virus-negative',clust),
+       y=paste('avg. expression virus-positive',clust),
+       color='regression\ncoefficient',
+       title=paste(strain_map[st],'(explants)'))
+```
+
+Figure S6J
+
+```{r Fig_S6J, fig.width=4.5, fig.height=2.5}
+pseudobulk_corrs <- pseudobulk %>%
+  dplyr::filter(!grepl('^H3N2|^MERS|^SCoV1|^SCoV2',gene_name)) %>%
+  dplyr::select(cluster,gene_name,log2FoldChange,padj,contrast) %>%
+  dplyr::filter(!is.na(padj) & !is.na(log2FoldChange)) %>%
+  myspread(contrast,c(log2FoldChange,padj)) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::summarise(H3N2_MERS=cor(H3N2_log2FoldChange,MERS_log2FoldChange,method='spearman',use='na.or.complete'),
+                   H3N2_SCoV1=cor(H3N2_log2FoldChange,SCoV1_log2FoldChange,method='spearman',use='na.or.complete'),
+                   H3N2_SCoV2=cor(H3N2_log2FoldChange,SCoV2_log2FoldChange,method='spearman',use='na.or.complete'),
+                   MERS_SCoV1=cor(MERS_log2FoldChange,SCoV1_log2FoldChange,method='spearman',use='na.or.complete'),
+                   MERS_SCoV2=cor(MERS_log2FoldChange,SCoV2_log2FoldChange,method='spearman',use='na.or.complete'),
+                   SCoV1_SCoV2=cor(SCoV1_log2FoldChange,SCoV2_log2FoldChange,method='spearman',use='na.or.complete'),
+                   SCoV2_acute=cor(SCoV2_log2FoldChange,akut_log2FoldChange,method='spearman',use='na.or.complete'),
+                   SCoV2_prolonged=cor(SCoV2_log2FoldChange,prolonged_log2FoldChange,method='spearman',use='na.or.complete')) %>%
+  gather(comp,R,-cluster) %>%
+  dplyr::mutate(infect1=gsub('_.*','',comp),
+                infect2=gsub('[^_]*_','',comp))
+
+loglog_corrs <- loglog %>%
+  dplyr::filter(!grepl('^H3N2|^MERS|^SCoV1|^SCoV2',gene_name)) %>%
+  dplyr::filter(cluster %in% c("AT2", "macrophages","monocytes")) %>%
+  dplyr::select(cluster,gene_name,estimate,padj,contrast) %>%
+  dplyr::filter(!is.na(padj) & !is.na(estimate)) %>%
+  myspread(contrast,c(estimate,padj)) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::summarise(H3N2_MERS=cor(H3N2_estimate,MERS_estimate,method='spearman',use='na.or.complete'),
+                   H3N2_SCoV1=cor(H3N2_estimate,SCoV1_estimate,method='spearman',use='na.or.complete'),
+                   H3N2_SCoV2=cor(H3N2_estimate,SCoV2_estimate,method='spearman',use='na.or.complete'),
+                   MERS_SCoV1=cor(MERS_estimate,SCoV1_estimate,method='spearman',use='na.or.complete'),
+                   MERS_SCoV2=cor(MERS_estimate,SCoV2_estimate,method='spearman',use='na.or.complete'),
+                   SCoV1_SCoV2=cor(SCoV1_estimate,SCoV2_estimate,method='spearman',use='na.or.complete'),
+                   SCoV2_acute=cor(SCoV2_estimate,acute_estimate,method='spearman',use='na.or.complete'),
+                   SCoV2_prolonged=cor(SCoV2_estimate,prolonged_estimate,method='spearman',use='na.or.complete')) %>%
+  gather(comp,R,-cluster) %>%
+  dplyr::mutate(infect2=gsub('_.*','',comp),
+                infect1=gsub('[^_]*_','',comp))
+
+corrs <- rbind(pseudobulk_corrs %>%
+                 dplyr::filter(infect1 %in% c('H3N2','MERS','SCoV1')) %>%
+                 dplyr::mutate(variable='log2 fold change'),
+               loglog_corrs %>%
+                 dplyr::filter(infect2 %in% c('H3N2','MERS','SCoV1')) %>%
+                 dplyr::mutate(variable='regression coeff.')) %>%
+  dplyr::mutate(infect1=revalue(infect1,strain_map),
+                infect2=revalue(infect2,strain_map))
+
+ggplot(corrs %>% dplyr::filter(cluster %in% c("macrophages")),
+       aes(x=infect1,y=infect2,fill=R, color=variable)) +
+  geom_tile(size=.5, key_glyph='point') +
+  geom_text(aes(label=round(R,2)),size=3, color='black') +
+  scale_fill_gradient2(low='brown4',high='forestgreen',midpoint=0,mid='gray80', breaks=c(0,.3,.6)) +
+  scale_color_manual(values=c('log2 fold change'='darkblue','regression coeff.'='darkorange')) +
+  theme_minimal() +
+  coord_fixed() +
+  labs(x='',y='',fill='correlation', color='') +
+  guides(color=guide_legend(nrow=2,override.aes = list(size=4,pch=22,fill='gray80')),
+         fill=guide_colorbar(title.position='right',title.theme=element_text(size=10,angle=90,vjust=.5))) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5),
+        legend.key.width=unit(4,'mm'),
+        legend.key.height=unit(4,'mm'),
+        legend.position='right',
+        legend.box="vertical",
+        legend.box.spacing=unit(.1,'mm'),
+        legend.box.margin=margin(t=0,r=0,b=2,l=0,unit='pt'),
+        legend.spacing.y=unit(.2,'mm'))
+```
+
+Figure S6E
+
+```{r Fig_S6E, fig.width=2.5,fig.height=2.}
+md <- lung_all@meta.data %>%
+  dplyr::mutate(condition=factor(ifelse(origin=='explant',infect,condition), 
+                                 levels=c('control','H3N2','MERS','SCoV1','SCoV2','acute','prolonged')),
+                origin=factor(origin,levels=c('explant','autopsy')))
+
+orig <- 'explant'
+take <- md$origin==orig
+mod <- glmer(md[take,'cluster']=='macrophages' ~ md[take,'condition'] + (1 | md[take,'orig.ident']), family=binomial)
+coef.explant <- summary(mod)$coefficients
+orig <- 'autopsy'
+take <- md$origin==orig
+mod <- glmer(md[take,'cluster']=='macrophages' ~ md[take,'condition'] + (1 | md[take,'orig.ident']), family=binomial)
+coef.autopsy <- summary(mod)$coefficients
+
+pv <- data.frame(pval=c(coef.explant[c(2,3,4,5),4],coef.autopsy[c(2,3),4]),
+                 condition=c('H3N2','MERS','SCoV1','SCoV2','acute','prolonged'),
+                 origin=c(rep('explant',4),rep('autopsy',2))) %>%
+  dplyr::mutate(condition=factor(condition,levels=c('control','H3N2','MERS','SCoV1','SCoV2','acute','prolonged'))) %>%
+  dplyr::mutate(p=stars.pval(pval),
+                condition=revalue(condition,strain_map))
+
+md %>%
+  dplyr::group_by(orig.ident,condition,origin) %>%
+  dplyr::summarise(frac=sum(cluster=='macrophages')/n()) %>%
+  dplyr::group_by(origin,condition) %>%
+  dplyr::summarise(mean_frac=mean(frac),se_frac=sd(frac)/sqrt(n())) %>%
+  dplyr::mutate(condition=revalue(condition,strain_map)) %>%
+  ggplot(aes(x=condition,y=mean_frac,ymin=mean_frac-se_frac/2,ymax=mean_frac+se_frac/2,fill=condition)) + 
+  geom_col(width=1) + 
+  geom_errorbar(size=.5,width=.0,color='gray30') +
+  geom_text(data=pv,
+            aes(y=Inf,x=condition,label=p),
+            color='black',
+            inherit.aes=FALSE,
+            angle=90,
+            size=4,
+            hjust=1,
+            vjust=.7) +
+  theme_classic() +
+  facet_grid(.~origin,scales='free_x',space='free_x') +
+  labs(x='',y='macrophage\nfraction') + 
+  scale_fill_manual(values=c(strain_colors,condition_colors)) +
+  scale_color_manual(values=c(strain_colors,condition_colors)) + 
+  theme(legend.position='none') +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        strip.background = element_rect(fill = NA, colour = NA))
+```
+
+Figure S6G
+
+```{r Fig_S6G,fig.width=3.5,fig.height=3.25}
+tmp_explant <- pseudobulk %>% 
+  dplyr::filter(!is.na(padj) & !is.na(log2FoldChange)) %>%
+  dplyr::filter((origin=='explant') & (contrast %in% c('MERS','SCoV2')) & !is.na(padj) & (baseMean > 20) & (cluster=='macrophages')) %>%
+  dplyr::select(gene_name,contrast,log2FoldChange) %>% 
+  spread(contrast,log2FoldChange)
+
+top_genes_explant <- pseudobulk %>%
+  dplyr::filter(!is.na(padj) & (baseMean > 20)) %>%
+  dplyr::filter((contrast %in% c('MERS','SCoV2')) & (cluster=='macrophages')) %>% 
+  dplyr::filter(!grepl('^MERS-|^SCoV2-',gene_name)) %>%
+  dplyr::group_by(contrast) %>%
+  dplyr::filter(padj < .01) %>%
+  dplyr::slice_max(abs(log2FoldChange),n=25) %>% 
+  dplyr::pull(gene_name)
+
+ggplot(tmp_explant,aes(x=MERS,y=SCoV2)) + 
+  geom_point(size=.5,shape=20,color='gray') + 
+  geom_point(data=tmp_explant %>%
+               dplyr::filter(gene_name %in% top_genes_explant),
+             size=1,color='black') +
+  geom_text_repel(data=tmp_explant %>%
+                    dplyr::filter(gene_name %in% top_genes_explant),
+                  aes(label=gene_name),
+                  size=2,
+                  segment.size=.25,
+                  segment.alpha=.5,
+                  force=2) + 
+  theme_classic() + 
+  theme(title=element_text(size=10)) +
+  labs(x='log2 fold change MERS-CoV vs. control',
+       y='log2 fold change SARS-CoV-2 vs. control',
+       title=paste0('explant macrophages (rho=',
+                    signif(cor(tmp_explant$MERS,tmp_explant$SCoV2,method='spearman'),2),')'))
+```
+
+Figure S6H
+
+```{r Fig_S6H,fig.width=2.5,fig.height=4.5}
+library(ggraph)
+CCI <- read.csv('data/scDiffCom/CCI_tables.csv',row.names=1,header=1)
+
+l2 <- data.frame(x=c(-1,1),y=c(0,0),row.names=c('macrophages','T cells'))
+
+top_LRI <- CCI %>% 
+  dplyr::filter(REGULATION %in% c('UP','DOWN'),
+                condition %in% c('acute','prolonged')) %>% 
+  dplyr::group_by(LRI) %>% 
+  dplyr::summarise(ndiff=sum(REGULATION %in% c('UP','DOWN')),
+                   ER=paste0(ER_CELLTYPES, collapse=','),
+                   cond=paste0(condition, collapse=',')) %>%
+  dplyr::filter(grepl('macrophages_T cells|T cells_macrophages',ER)) %>% 
+  dplyr::slice_min(ndiff,n=15) %>%
+  dplyr::mutate(LRI=as.character(LRI))
+
+plots <- list()
+for (cond in c("acute",'prolonged')) {
+  
+  edge_df <- CCI %>% 
+    dplyr::filter(condition==cond,
+                  grepl('macrophages',ER_CELLTYPES),
+                  grepl('T cells',ER_CELLTYPES)) %>%
+    dplyr::filter(REGULATION %in% c("UP","DOWN"),LRI %in% as.character(top_LRI$LRI)) %>%
+    dplyr::mutate(emitter=gsub('_.*','',ER_CELLTYPES),
+                  receiver=gsub('.*_','',ER_CELLTYPES),
+                  LRI=as.character(LRI)) %>%
+    dplyr::select(emitter,receiver,LRI,REGULATION)
+  
+  node_df <- lung_all@meta.data %>%
+    dplyr::filter((infect==cond) | (condition==cond)) %>%
+    dplyr::group_by(cluster) %>%
+    dplyr::summarise(ncells=n()) %>%
+    dplyr::mutate(label=as.character(cluster)) %>%
+    dplyr::select(cluster,ncells,label) %>%
+    dplyr::filter(cluster %in% c(edge_df$emitter,edge_df$receiver))
+  
+  plots[[cond]] <- ggraph(graph_from_data_frame(edge_df,
+                                                directed=TRUE,
+                                                vertices=node_df),
+                          layout=l2[node_df$label,]) +
+    geom_edge_fan(aes(color=REGULATION, label=LRI),
+                  arrow = arrow(length = unit(2, "mm")),
+                  end_cap = circle(3, 'mm'),
+                  strength=1, width=1, alpha=.5,
+                  angle_calc='along', label_dodge=unit(0,'mm'), label_size=2.5, force_flip=TRUE) +
+    geom_node_point(aes(size = .2),color='gray',pch=16,show=FALSE) +
+    geom_node_text(aes(label = label),size=3,hjust=c(.5,.5),vjust=c(0,1),angle=90) +
+    theme_void() +
+    scale_edge_color_manual(values=c('UP'='mediumorchid1','DOWN'='mediumseagreen')) +
+    scale_fill_manual(values=lung_cell_type_colors) +
+    #guides(edge_color=guide_legend(override.aes=list(edge_width=1),ncol=1)) +
+    theme(legend.key.size=unit(3.5,'mm'),
+          legend.box='horizontal') +
+    coord_cartesian(xlim=c(-1.1,1.1),ylim=c(-.25,.25)) +
+    labs(edge_color='',edge_linetype='',edge_alpha='',title=ifelse(cond=='SCoV2','explant',cond))  
+}
+plot_grid(plots[['acute']]+theme(legend.position='none'),
+          plots[['prolonged']]+theme(legend.position=c(.85,1)),ncol=1,align='vh')
+```
+
+# Figure 7 + S7
+
+```{r get_data_fig7}
+lung_explant <- readRDS('data/seurat/lung_explant_all.rds')
+lung_autopsy <- readRDS('data/seurat/lung_autopsy_all.rds')
+
+momac <- readRDS('data/seurat/lung_combined_macrophages.rds')
+
+AM <- readRDS('data/seurat/ex_vivo_AM.rds')
+
+scAM_DE_ctrl <- read.csv('data/differential_expression/ex_vivo_AM_ctrl_pseudobulk_DE.csv',stringsAsFactors=FALSE)
+scAM_DE_ACE2 <- read.csv('data/differential_expression/ex_vivo_AM_ACE2_pseudobulk_DE.csv',stringsAsFactors=FALSE)
+scAM_tmod <- read.csv('data/differential_expression/ex_vivo_AM_pseudobulk_DE_tmod.csv')
+```
+
+Figure 7A
+
+```{r Fig_7A,fig.width=2.5,fig.height=4.5}
+anno <- data.frame(x=c(-8,-8),
+                   xend=c(-4,-8),
+                   y=c(-8,-8),
+                   yend=c(-8,-4))
+anno_text <- data.frame(x=c(-6,-9),
+                        y=c(-9,-6),
+                        label=c('UMAP 1','UMAP 2'),
+                        angle=c(0,90))
+
+anno_cluster <- data.frame(x=c(-7,0,0,1,1),
+                           xend=c(0,3,1,-4,4),
+                           y=c(1,2,2,0,0),
+                           yend=c(2,4,0,-4,-3))
+
+DimPlot(momac, group.by='subcluster', label=TRUE, split.by='origin',ncol=1) +
+  theme_void() +
+  theme(legend.position='none')  +
+  scale_color_brewer(palette='Pastel2') +
+  geom_segment(data=cbind(anno,data.frame(origin=factor('autopsy',levels=c('explant','autopsy')))),
+               aes(x=x,y=y,xend=xend,yend=yend),
+            arrow=arrow(length=unit(2,'mm')),colour='black',size=1) +
+  geom_segment(data=anno_cluster,
+               aes(x=x,y=y,xend=xend,yend=yend),
+               colour='black',size=.5,linetype='dashed') +
+  geom_text(data=cbind(anno_text,data.frame(origin=factor('autopsy',levels=c("explant","autopsy")))),
+            aes(x=x,y=y,label=label,angle=angle),size=3) +
+  coord_fixed()
+```
+
+Figure S7C
+
+```{r Fig_S7C,fig.width=2.5,fig.height=2.25}
+ggplot(FetchData(momac,c('UMAP_1','UMAP_2','virus','contrast','origin')) %>%
+         dplyr::filter(origin=='explant') %>%
+         dplyr::mutate(pos=ifelse(virus!='none',.75,.25),
+                       virus=revalue(virus,strain_map),
+                       contrast=revalue(contrast,strain_map)) %>%
+         dplyr::arrange(pos),
+       aes(x=UMAP_1,y=UMAP_2,color=virus,size=pos)) +
+  geom_point(size=.5) +
+  theme_void() + 
+  scale_color_manual(values=strain_colors,
+                     breaks=c('IAV','MERS-CoV','SARS-CoV','SARS-CoV-2')) +
+  guides(color = guide_legend(override.aes = list(size=4),ncol=2)) +
+  scale_size_identity(guide='none') +
+  geom_segment(data=anno_cluster,
+               aes(x=x,y=y,xend=xend,yend=yend),
+               colour='black',size=.5,linetype='dashed') +
+  labs(color='') + 
+  coord_fixed() +
+  theme(legend.margin=margin(0,0,0,0),
+        legend.key.size=unit(4,'mm'),
+        legend.position='bottom')  
+```
+
+Figure 7D
+
+```{r Fig_7D,fig.width=4.5,fig.height=2.25}
+ggplot(FetchData(momac,c('UMAP_1','UMAP_2','virus','contrast','origin')) %>%
+         dplyr::filter(origin=='explant') %>%
+         dplyr::mutate(pos=ifelse(virus=='SCoV2',.75,.25),
+                       virus=ifelse(virus=='SCoV2','SARS-CoV-2','none'),
+                       contrast=revalue(contrast,strain_map)) %>%
+         dplyr::arrange(pos),
+       aes(x=UMAP_1,y=UMAP_2,color=virus,size=pos)) +
+  geom_point(size=.5) +
+  theme_void() +
+  scale_color_manual(values=strain_colors,breaks=c('SARS-CoV-2')) +
+  guides(color = guide_legend(override.aes = list(size=3))) +
+  theme(legend.position=c(.8,.15)) +
+  geom_segment(data=cbind(anno,data.frame(origin='explant')),
+               aes(x=x,y=y,xend=xend,yend=yend),
+               arrow=arrow(length=unit(2,'mm')),colour='black',size=1) +
+  geom_text(data=cbind(anno_text,data.frame(origin='explant')),
+            aes(x=x,y=y,label=label,angle=angle),colour='black',size=3) +
+  geom_segment(data=anno_cluster,
+               aes(x=x,y=y,xend=xend,yend=yend),
+               colour='black',size=.5,linetype='dashed') +
+  labs(color='') +
+  coord_fixed()
+```
+
+Figure S7A
+
+```{r Fig_S7A,fig.width=7,fig.height=2.5}
+lung_explant$AM_AT2_doublet <- (lung_explant$prediction.score.Alveolar.Epithelial.Type.2 > .05) & (lung_explant$prediction.score.Macrophage > .05)
+lung_autopsy$AM_AT2_doublet <- (lung_autopsy$prediction.score.Alveolar.Epithelial.Type.2 > .05) & (lung_autopsy$prediction.score.Macrophage > .05)
+lung_explant$virus <- ifelse(lung_explant$pct.SCoV2 > 0,'SCoV2','none')
+lung_autopsy$virus <- ifelse(lung_autopsy$pct.SCoV2 > 0,'SCoV2','none')
+
+p1 <- lung_explant@meta.data %>% 
+  dplyr::filter(infect %in% c('control','SCoV2')) %>%
+  dplyr::mutate(condition=ifelse(infect=='SCoV2','SARS-CoV-2 infected','control explant'),
+                virus=revalue(virus,c('SCoV2'='positive','none'='negative'))) %>%
+  dplyr::select(prediction.score.Alveolar.Epithelial.Type.2,
+                prediction.score.Macrophage,
+                condition,
+                DF.classifications,
+                origin,
+                virus) %>% #,
+  dplyr::arrange(condition,origin,virus) %>%
+  ggplot(aes(x=prediction.score.Alveolar.Epithelial.Type.2,
+             y=prediction.score.Macrophage,
+             color=virus,
+             shape=DF.classifications)) +
+  geom_point(size=1) +
+  theme_classic() + 
+  facet_grid(.~condition,switch='y') +
+  scale_color_manual(values=c('black','coral2')) +
+  scale_shape_manual(values=c('Doublet'=4,'Singlet'=20)) +
+  guides(color = guide_legend(override.aes = list(size=2)),
+         shape = guide_legend(override.aes = list(size=2))) +
+  theme(strip.background=element_blank(),
+        strip.placement='outside',
+        legend.spacing.y = unit(0, "mm"),
+        legend.title=element_text(size=9),
+        legend.position=c(.35,.7),
+        legend.key.size=unit(3,'mm')) +
+  labs(x='prediction score AT2',y='prediction score AM',color='SARS-CoV-2',shape='DoubletFinder')
+
+p2 <- rbind(lung_explant@meta.data %>% 
+        dplyr::filter(infect %in% c('control','SCoV2')) %>%
+        dplyr::mutate(condition=infect) %>%
+        dplyr::group_by(orig.ident,origin,condition) %>%
+        dplyr::summarise(frac=mean(AM_AT2_doublet)),
+      lung_autopsy@meta.data %>%
+        dplyr::filter(condition %in% c('control','akut')) %>%
+        dplyr::mutate(condition=ifelse(condition=='akut','acute',condition)) %>%
+        dplyr::group_by(orig.ident,origin,condition) %>%
+        dplyr::summarise(frac=mean(AM_AT2_doublet))) %>%
+  dplyr::group_by(origin,condition) %>%
+  dplyr::summarise(mean_frac=mean(frac),se_frac=sd(frac)/sqrt(n())) %>%
+  dplyr::mutate(condition=factor(condition,levels=c('control','H3N2','MERS','SCoV1','SCoV2','acute','prolonged'))) %>%
+  dplyr::mutate(condition=revalue(condition,strain_map),
+                origin=factor(origin,levels=c('explant','autopsy'))) %>%
+  ggplot(aes(x=condition,y=mean_frac,ymin=mean_frac-se_frac,ymax=mean_frac+se_frac,fill=condition)) + 
+  geom_col(width=1) + 
+  geom_errorbar(size=.5,width=.0,color='gray30') +
+  theme_classic() +
+  facet_grid(.~origin,scales='free_x',space='free_x') +
+  labs(x='',y='fraction\nAM-AT2 doublets') + 
+  scale_fill_manual(values=c(strain_colors,condition_colors)) +
+  scale_color_manual(values=c(strain_colors,condition_colors)) + 
+  theme(legend.position='none') +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        strip.background = element_rect(fill = NA, colour = NA))
+
+plot_grid(p1,p2,ncol=2,align='vh',rel_widths=c(.65,.35))
+```
+
+Figure 7B
+
+```{r Fig_7B,fig.width=4,fig.height=4.5}
+explant_doublets <- subset(lung_explant,subset=AM_AT2_doublet)
+explant_doublets$subcluster <- 'AM-AT2 doublet'
+tmp <- merge(momac, explant_doublets)
+tmp$subcluster <- factor(tmp$subcluster, levels=c('AM','M\u03D5','act M\u03D5','infl AM', 'AM-AT2 doublet'))
+
+markers <- read.csv('data/seurat/lung_combined_macrophage_markers.csv',
+                    stringsAsFactors=FALSE,row.names=1)
+
+top5 <- markers %>%
+  group_by(cluster) %>%
+  top_n(5, avg_logFC)
+
+DotPlot(tmp, features = c('C1QA',unique(top5$gene),'S100A9'), group.by='subcluster') +
+  scale_color_gradient2(low='blue3',high='red3') +
+  coord_flip(clip='off') +
+  theme_classic() +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5),
+        legend.key.size=unit(4,'mm')) +
+  labs(x='',y='',color='expression',size='pct. expressed')
+```
+
+Figure 7C
+
+```{r Fig_7C,fig.width=6,fig.height=4.5}
+momac_pws <- c('Hallmark tnfa signaling via nfkb',
+               'Hallmark hypoxia',
+               'Hallmark apoptosis',
+               'Hallmark unfolded protein response',
+               'Hallmark inflammatory response',
+               'Kegg ribosome',
+               'Go wound healing',
+               'Hallmark interferon gamma response',
+               'Hallmark interferon alpha response',
+               'Reactome interferon alpha beta signaling',
+               'Reactome interferon signaling',
+               'Reactome signaling by interleukins',
+               'Go macrophage activation',
+               'Go chemokine production',
+               'Go cytokine production',
+               'Go response to virus',
+               'Reactome fatty acid metabolism',
+               'Go antigen processing and presentation',
+               'Kegg rig i like receptor signaling pathway',
+               'Go myeloid leukocyte activation')
+
+sel <- grepl(paste0(paste0('^',momac_pws,'$'),collapse='|'),msig$MODULES$Title)
+momac_pathways <- sapply(msig$MODULES[sel,]$ID, function(x) msig$MODULES2GENES[[x]])
+names(momac_pathways) <- gsub(' ','_',toupper(msig$MODULES[sel,'Title']))
+
+tmp2 <- AddModuleScore(tmp,momac_pathways, name='pathways',assay='RNA')
+tmp2 <- tmp2@meta.data[,grepl('pathways',colnames(tmp2@meta.data))]
+colnames(tmp2) <- names(momac_pathways)
+tmp <- AddMetaData(tmp,tmp2)
+
+tmp2 <- FetchData(tmp, c('subcluster','origin',gsub(' ','_',toupper(momac_pws)))) %>%
+  dplyr::group_by(origin,subcluster) %>%
+  dplyr::summarise_if(is.numeric,mean) %>%
+  dplyr::mutate_if(is.numeric,scale)
+
+df <- tmp2 %>% 
+  gather(pathway,score,-c(subcluster,origin)) %>%
+  dplyr::mutate(cond=paste(subcluster,origin,sep='_')) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(pathway,score,cond) %>%
+  spread(cond,score) %>%
+  tibble::column_to_rownames('pathway')
+  
+hc <- hclust(dist(df))
+pathway.order <- gsub('_',' ',row.names(df)[order.hclust(hc)])
+
+tmp2 %>%
+  gather(pathway,score,-c(subcluster,origin)) %>%
+  dplyr::mutate(pathway=factor(gsub('_',' ',pathway),levels=pathway.order),
+                origin=factor(origin,levels=c('explant','autopsy')))  %>%
+  ggplot(aes(x=subcluster,y=pathway,fill=score)) +
+  geom_tile() + 
+  theme_minimal() +
+  facet_grid(.~origin,scales='free_x',space='free_x') +
+  scale_fill_gradient2(low='blue3',mid='gray',high='red3',na.value='white') +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5)) +
+  labs(x='',y='',fill='z-score')
+```
+
+Figure 7E
+
+```{r Fig_7E,fig.width=3.5,fig.height=3.5}
+md <- momac@meta.data %>%
+  dplyr::filter(origin=='explant') %>%
+  dplyr::mutate(infect=factor(revalue(infect, strain_map),
+                              levels=c('control','IAV','MERS-CoV','SARS-CoV','SARS-CoV-2')))
+
+pvals <- list()
+effects <- list()
+for (g in unique(md$subcluster)) {
+  mod <- glmer(md$subcluster==g ~ md$infect + (1 | md$orig.ident), family=binomial)
+  coef <- summary(mod)$coefficients
+  pvals[[g]] <- coef[c(2,3,4,5),4]
+  effects[[g]] <- coef[c(2,3,4,5),1]
+}
+pvals <- data.frame(pvals,stringsAsFactors=FALSE)
+effects <- data.frame(effects,stringsAsFactors=FALSE)
+pvals$infect <- c('IAV','MERS-CoV','SARS-CoV','SARS-CoV-2')
+
+pv.explant <- gather(pvals, key='subcluster', value='pval', -infect) %>%
+  dplyr::mutate(infect=factor(infect,levels=c('control','IAV','MERS-CoV','SARS-CoV','SARS-CoV-2')),
+                subcluster=gsub('^X','',subcluster)) %>%
+  tidyr::complete(infect,subcluster,fill=list(pval=1)) %>%
+  dplyr::mutate(p=stars.pval(pval))
+
+md <- momac@meta.data %>%
+  dplyr::filter(origin=='autopsy') %>%
+  dplyr::mutate(condition=factor(condition,levels=c('control','acute','prolonged')))
+
+pvals <- list()
+for (g in unique(md$subcluster)) {
+  mod <- glmer(md$subcluster==g ~ md$condition + (1 | md$orig.ident), family=binomial)
+  coef <- summary(mod)$coefficients
+  pvals[[g]] <- coef[c(2,3),4]
+}
+pvals <- data.frame(pvals,stringsAsFactors=FALSE)
+pvals$condition <- c('acute','prolonged')
+
+pv.autopsy <- gather(pvals, key='subcluster', value='pval', -condition) %>%
+  dplyr::mutate(condition=factor(condition,levels=c('control','acute','prolonged')),
+                subcluster=gsub('^X','',subcluster)) %>%
+  tidyr::complete(condition,subcluster,fill=list(pval=1)) %>%
+  dplyr::mutate(p=stars.pval(pval))
+
+ctrl <-  momac@meta.data %>%
+  dplyr::mutate(contrast=factor(ifelse(origin=='explant',revalue(infect,strain_map),condition), 
+                                 levels=c('control','IAV','MERS-CoV','SARS-CoV','SARS-CoV-2','acute','prolonged')),
+                origin=factor(origin,levels=c('explant','autopsy'))) %>%
+  dplyr::group_by(origin,contrast) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::mutate(frac=n/sum(n),
+                subcluster='all')
+
+pv <- rbind(pv.explant %>% dplyr::mutate(origin='explant',contrast=infect) %>% dplyr::select(-infect),
+            pv.autopsy %>% dplyr::mutate(origin='autopsy',contrast=condition) %>% dplyr::select(-condition)) %>%
+  dplyr::mutate(p=ifelse(pval > .05,'',p),
+                subcluster=gsub('\\.',' ',subcluster))
+
+signal <- momac@meta.data %>%
+  dplyr::mutate(contrast=factor(ifelse(origin=='explant',revalue(infect,strain_map),condition), 
+                                 levels=c('control','IAV','MERS-CoV','SARS-CoV','SARS-CoV-2','acute','prolonged')),
+                origin=factor(origin,levels=c('explant','autopsy'))) %>%
+  dplyr::group_by(origin,subcluster,contrast) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::mutate(frac=n/sum(n))
+
+rbind(signal,ctrl) %>%
+  dplyr::left_join(pv,by=c('subcluster','origin','contrast')) %>%
+  dplyr::mutate(tmp=ifelse(subcluster=='all','1','2'),
+                origin=factor(origin,levels=c('explant','autopsy')),
+                subcluster=factor(subcluster, levels=c('all','AM','M\u03D5','act M\u03D5','infl AM'))) %>%
+  ggplot(aes(x=subcluster,y=frac,fill=contrast)) + 
+  geom_col() + 
+  geom_text(aes(label=p,group=contrast),
+            position=position_stack(vjust = .5),size=2) +
+  facet_grid(origin~tmp,space='free_x',scales='free_x') +
+  theme_minimal() +
+  scale_fill_manual(values=c(condition_colors,strain_colors),
+                    guide=guide_legend(ncol=1)) + 
+  theme(legend.position='right',
+        legend.key.size=unit(3,'mm'),
+        legend.spacing.y=unit(1,'mm'),
+        legend.title=element_blank(),
+        legend.margin=margin(c(1,1,1,1)),
+        strip.text.x = element_blank(),
+        axis.text.x=element_text(angle=90,hjust=1,vjust=.5)) + 
+  labs(x='',y='fraction',fill='')
+```
+
+Figure S7D
+
+```{r Fig_S7D,fig.width=7.5,fig.height=3}
+scenic_explants <- read.csv('data/scenic/momac_scenic_explant_AUC.csv',
+                   header=TRUE,row.names=1,check.names=FALSE)
+colnames(scenic_explants) <- gsub('_+','_',gsub('\\(\\+\\)','_regulon',colnames(scenic_explants)))
+scenic_autopsy <- read.csv('data/scenic/momac_scenic_autopsy_AUC.csv',
+                   header=TRUE,row.names=1,check.names=FALSE)
+colnames(scenic_autopsy) <- gsub('_+','_',gsub('\\(\\+\\)','_regulon',colnames(scenic_autopsy)))
+regs <- intersect(colnames(scenic_explants),colnames(scenic_autopsy))
+scenic <- rbind(scenic_autopsy[,regs],scenic_explants[,regs])
+
+momac <- AddMetaData(momac, scenic)
+
+rss_explant <- read.csv('data/scenic/momac_explant_regulon_specificity_scores.csv',
+                        header=TRUE,row.names=1)
+row.names(rss_explant) <- gsub('_+','_',gsub('\\(\\+\\)','_regulon',row.names(rss_explant)))
+rss_autopsy <- read.csv('data/scenic/momac_autopsy_regulon_specificity_scores.csv',
+                        header=TRUE,row.names=1)
+row.names(rss_autopsy) <- gsub('_+','_',gsub('\\(\\+\\)','_regulon',row.names(rss_autopsy)))
+
+rss <- rbind(rss_explant %>% 
+               tibble::rownames_to_column('regulon') %>%
+               gather(group,score,-regulon) %>%
+               dplyr::mutate(orig='explant',
+                             comparison=ifelse(grepl('Ma',group),'subcluster','contrast')),
+             rss_autopsy %>% 
+               tibble::rownames_to_column('regulon') %>%
+               gather(group,score,-regulon) %>%
+               dplyr::mutate(orig='autopsy',
+                             comparison=ifelse(grepl('Ma',group),'subcluster','contrast')))
+
+take <- colnames(scenic)[colMeans(scenic) > .0]
+
+subcluster_regulons <- rss %>%
+  dplyr::filter(comparison=='subcluster') %>%
+  dplyr::group_by(group) %>%
+  dplyr::slice_max(score,n=20) %>%
+  dplyr::filter(regulon %in% take) %>%
+  dplyr::pull(regulon) %>%
+  unique()
+
+tmp2 <- FetchData(momac, c('subcluster','origin',subcluster_regulons)) %>%
+  dplyr::group_by(origin,subcluster) %>%
+  dplyr::summarise_if(is.numeric,mean) %>%
+  dplyr::mutate_if(is.numeric,scale)
+
+df <- tmp2 %>% 
+  gather(set,score,-c(subcluster,origin)) %>%
+  dplyr::mutate(set=gsub('_regulon','',set),
+                cond=paste(subcluster,origin,sep='_')) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(set,score,cond) %>%
+  spread(cond,score) %>%
+  tibble::column_to_rownames('set')
+  
+hc <- hclust(dist(df))
+set.order <- row.names(df)[order.hclust(hc)]
+
+tmp2 %>%
+  gather(set,score,-c(subcluster,origin)) %>%
+  dplyr::mutate(set=factor(gsub('_regulon','',set),levels=set.order))  %>%
+  ggplot(aes(x=set,y=subcluster,fill=score)) +
+  geom_tile() + 
+  theme_minimal() +
+  facet_grid(origin~.) +
+  scale_fill_gradient2(low='blue3',mid='gray',high='red3',na.value='white') +
+  guides(fill=guide_colorbar(barheight=4,barwidth=1)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5)) +
+  labs(x='',y='',fill='z-score')
+```
+
+```{r scAM_save_tables}
+wb <- createWorkbook()
+addWorksheet(wb, sheetName='pseudobulk DEGs ex-vivo AM mock')
+writeData(wb, sheet='pseudobulk DEGs ex-vivo AM mock',
+          x=scAM_DE_ctrl %>% dplyr::filter((padj < .05) & (contrast!='48h')) %>% 
+            dplyr::select(-c(cluster,X)) %>% 
+            dplyr::mutate(contrast=revalue(contrast,strain_map)),
+          rowNames=FALSE)
+addWorksheet(wb, sheetName='pseudobulk DEGs ex-vivo AM ACE2')
+writeData(wb, sheet='pseudobulk DEGs ex-vivo AM ACE2',
+          x=scAM_DE_ACE2 %>% dplyr::filter((padj < .05) & (contrast!='48h')) %>% 
+            dplyr::select(-c(cluster,X)) %>% 
+            dplyr::mutate(contrast=revalue(contrast,strain_map)),
+          rowNames=FALSE)
+addWorksheet(wb, sheetName='DE pathways ex-vivo AM')
+writeData(wb, sheet='DE pathways ex-vivo AM',
+          x=scAM_tmod %>% dplyr::filter((contrast!='48h')) %>% 
+            dplyr::mutate(direction=gsub('.*_.*_','',dataset)) %>% 
+            dplyr::select(-c(X,tmp,dataset))  %>% 
+            dplyr::mutate(contrast=revalue(contrast,strain_map)),
+          rowNames=FALSE)
+saveWorkbook(wb, file='tables/Table_S7.xlsx', overwrite=TRUE)
+```
+
+Figure S7G
+
+```{r Fig_S7G,fig.width=10,fig.height=3}
+anno <- data.frame(x=c(-10,-10),
+                   xend=c(-7,-10),
+                   y=c(-12,-12),
+                   yend=c(-12,-9))
+anno_text <- data.frame(x=c(-8,-11),
+                        y=c(-13,-10.5),
+                        label=c('UMAP 1','UMAP 2'),
+                        angle=c(0,90))
+
+cluster_labels <- FetchData(AM,c('UMAP_1','UMAP_2','cluster')) %>%
+  dplyr::group_by(cluster)%>%
+  dplyr::summarise(x=median(UMAP_1),
+                   y=median(UMAP_2))
+
+p1 <- DimPlot(AM,group.by='cluster') + 
+  coord_fixed() + 
+  theme_void() +
+  geom_text(data=cluster_labels,aes(x=x,y=y,label=cluster),size=3) +
+  scale_color_brewer(palette='Paired') +
+  geom_segment(data=anno,
+               aes(x=x,y=y,xend=xend,yend=yend),
+            arrow=arrow(length=unit(2,'mm')),colour='black',size=1) +
+  geom_text(data=anno_text,
+            aes(x=x,y=y,label=label,angle=angle),size=2.5) + 
+  theme(legend.position='none')
+
+p2 <- DimPlot(AM,group.by='donor',shuffle=TRUE) + 
+  geom_text(data=cluster_labels,aes(x=x,y=y,label=cluster),size=3) +
+  coord_fixed() + 
+  theme_void() +
+  scale_color_manual(values=donor_colors) +
+  geom_segment(data=anno,
+               aes(x=x,y=y,xend=xend,yend=yend),
+            arrow=arrow(length=unit(2,'mm')),colour='black',size=1) +
+  geom_text(data=anno_text,
+            aes(x=x,y=y,label=label,angle=angle),size=2.5) + 
+  theme(legend.position=c(.95,.15),
+        legend.key.height=unit(4,'mm'))
+
+md <- rbind(AM@meta.data %>%
+              dplyr::group_by(cluster,infect) %>%
+              dplyr::summarise(n=n()) %>%
+              dplyr::mutate(frac=n/sum(n),
+                            group=infect,
+                            var='infect') %>%
+              dplyr::select(-infect),
+            AM@meta.data %>%
+              dplyr::group_by(cluster,background) %>%
+              dplyr::summarise(n=n()) %>%
+              dplyr::mutate(frac=n/sum(n),
+                            group=background,
+                            var='background') %>%
+              dplyr::select(-background),
+            AM@meta.data %>%
+              dplyr::group_by(cluster,timepoint) %>%
+              dplyr::summarise(n=n()) %>%
+              dplyr::mutate(frac=n/sum(n),
+                            group=timepoint,
+                            var='timepoint') %>%
+              dplyr::select(-timepoint),
+            AM@meta.data %>%
+              dplyr::group_by(cluster,donor) %>%
+              dplyr::summarise(n=n()) %>%
+              dplyr::mutate(frac=n/sum(n),
+                            group=donor,
+                            var='donor') %>%
+              dplyr::select(-donor))
+
+pl1 <- md %>%
+  dplyr::filter(var=='infect') %>%
+  ggplot(aes(y=cluster,x=frac,fill=group)) + 
+  geom_col() + 
+  theme_minimal() +
+  scale_fill_manual(values=strain_colors,
+                    guide=guide_legend(ncol=1)) + 
+  theme(legend.position='bottom',
+        axis.text.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        legend.key.size=unit(3,'mm'),
+        legend.spacing.y=unit(1,'mm'),
+        legend.title=element_blank(),
+        legend.margin=margin(c(1,1,1,1)),
+        strip.text.y = element_blank()) + 
+  labs(x='',y='',fill='')
+
+pl2 <- md %>%
+  dplyr::filter(var=='background') %>%
+  ggplot(aes(y=cluster,x=frac,fill=group)) + 
+  geom_col() + 
+  theme_minimal() +
+  scale_fill_manual(values=background_colors,
+                    guide=guide_legend(ncol=1)) + 
+  theme(legend.position='bottom',
+        axis.text.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.title.x=element_blank(),
+        legend.key.size=unit(3,'mm'),
+        legend.spacing.y=unit(1,'mm'),
+        legend.title=element_blank(),
+        legend.margin=margin(c(1,1,1,1)),
+        strip.text.y = element_blank()) + 
+  labs(x='',y='',fill='')
+
+pl3 <- md %>%
+  dplyr::filter(var=='timepoint') %>%
+  ggplot(aes(y=cluster,x=frac,fill=group)) + 
+  geom_col() + 
+  theme_minimal() +
+  scale_fill_manual(values=timepoint_colors,
+                    guide=guide_legend(ncol=1)) + 
+  theme(legend.position='bottom',
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        legend.key.size=unit(3,'mm'),
+        legend.spacing.y=unit(1,'mm'),
+        legend.title=element_blank(),
+        legend.margin=margin(c(1,1,1,1)),
+        strip.text.y = element_blank()) + 
+  labs(x='',y='',fill='')
+
+p3 <- plot_grid(pl1 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
+                pl2 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
+                pl3 + theme(plot.margin = unit(c(0, 0, 0, 0), "cm")),
+                align='vh',ncol=3,rel_widths=c(.4,.3,.3,.3))
+
+plot_grid(p1,p2,p3,align='vh',ncol=3,rel_widths=c(.35,.35,.3))
+```
+
+Figure S7H
+
+```{r Fig_S7H,fig.width=9,fig.height=3.75}
+markers <- read.csv('data/seurat/ex_vivo_AM_markers.csv',
+                    stringsAsFactors=FALSE)
+
+top5 <- markers %>%
+  group_by(cluster) %>%
+  top_n(5, avg_logFC)
+
+Idents(AM) <- 'cluster'
+DotPlot(AM, features = unique(top5$gene)) +
+  scale_color_gradient2(low='blue3',high='red3') +
+  theme_classic() +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5),
+        legend.key.height=unit(3,'mm')) +
+  labs(x='',y='',color='expression',size='pct. expressed')
+```
+
+Figure 7H
+
+```{r Fig_7H,fig.width=9,fig.height=3.25}
+ISGs <- c('ADAR','APOBEC3','BST2','C6orf150','CD74','DDIT4','DDX58','DDX60','EIF2AK2','GBP1','GBP2',
+          'HPSE','IFI44L','IFI6','IFIH1','IFIT1','IFIT2','IFIT3','IFIT5','IFITM1','IFITM2','IFITM3',
+          'IRF1','IFR7','ISG15','ISG20','MAP3K14','MOV10','MS4A4A','MX1','MX2','NAMPT','NT5C3',
+          'OAS1','OAS2','OAS3','OASL','P2RY6','PHF15','PML','RSAD2','RTP4','SLC15A3','SLC25A28',
+          'SSBP3','TREX1', 'CXCL10', 'CXCL11', 'TNF', 'IL6', 'NFKBIA', 'CCL2', 'CCL3')
+
+tmp_AM_ctrl <- scAM_DE_ctrl %>% 
+  dplyr::filter(!is.na(padj) & (baseMean > 20)) %>%
+  dplyr::select(gene_name,contrast,log2FoldChange) %>% 
+  spread(contrast,log2FoldChange)
+
+top_genes_ctrl <- scAM_DE_ctrl %>%
+  dplyr::filter((contrast %in% c('NL63','SCoV2')) & (gene_name %in% ISGs) & (padj < .05)) %>%
+  dplyr::pull(gene_name)
+
+p1 <- ggplot(tmp_AM_ctrl,aes(x=NL63,y=SCoV2)) + 
+  geom_point(size=.5,shape=20,color='gray') + 
+  geom_point(data=tmp_AM_ctrl %>%
+               dplyr::filter(gene_name %in% top_genes_ctrl),
+             size=1,color='black') +
+  geom_text_repel(data=tmp_AM_ctrl %>%
+                    dplyr::filter(gene_name %in% top_genes_ctrl),
+                  aes(label=gene_name),
+                  size=2,
+                  segment.size=.25,
+                  segment.alpha=.5,
+                  force=2) + 
+  theme_classic() + 
+  coord_fixed(xlim=c(-3,3),ylim=c(-3,3),clip='off') +
+  theme(title=element_text(size=10)) +
+  labs(x='log2 fold change NL63-CoV vs. control',
+       y='log2 fold change SARS-CoV-2 vs. control',
+       title=paste0('mock: rho=',
+                    signif(cor(tmp_AM_ctrl$NL63,tmp_AM_ctrl$SCoV2,method='spearman'),2)))
+
+p2 <- scAM_tmod %>% 
+  dplyr::filter((Title %in% c(lung_pws,momac_pws)) & (contrast %in% c('SCoV2','NL63')) & (background=='ctrl')) %>%
+  dplyr::filter((adj.P.Val < 1.e-5)) %>%
+  dplyr::mutate(direction=ifelse(grepl('up',dataset),'up','down'),
+                pathway=toupper(Title),
+                contrast=factor(revalue(contrast,strain_map),levels=c('NL63-CoV','SARS-CoV-2'))) %>%
+  tidyr::complete(pathway,contrast,direction,fill=list(adj.P.Val=1)) %>%
+  dplyr::group_by(pathway,contrast) %>%
+  dplyr::slice_min(adj.P.Val,n=1,with_ties=FALSE) %>%
+  ggplot(aes(x=pathway,y=contrast,size=-log10(adj.P.Val),color=ifelse(adj.P.Val < 1, direction, 'none'))) + 
+  geom_point() +
+  coord_flip() +
+  scale_color_manual(values=c('up'='red3','down'='blue3','none'='gray'),
+                     breaks=c('up','down'),labels=c('up','down')) +
+  theme_minimal() +
+  scale_size_continuous(breaks=c(0,10,20),labels=c('0','-10','-20')) +
+  theme(legend.key.size=unit(3,'mm'),
+        axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        axis.title.x=element_blank(),
+        legend.box='vertical',
+        legend.title=element_text(size=10,hjust=.5,vjust=.5),
+        legend.key.height=unit(3,'mm'),
+        legend.spacing.y=unit(0,'mm'),
+        legend.position='right') +
+  labs(size='log10\nadj.\np-val.',x='',y='',color='') 
+
+plot_grid(p1,p2,ncol=2,rel_widths = c(.4,.6))
+```
+
+Figure 7F
+
+```{r Fig_7F,fig.width=6,fig.height=3.25}
+md <- FetchData(AM,c('virus','infect','origin','background','timepoint','ACE2','orig.ident')) %>% 
+  dplyr::mutate(virus_positive=virus!='none',
+                ACE2_positive=ACE2 > 0) %>%
+  dplyr::filter(infect!='control')
+
+pvals <- list()
+for (strain in c('NL63-CoV','SARS-CoV-2')) {
+  mod <- glmer(virus_positive ~ background + (1 | orig.ident),family='binomial',data=md %>% dplyr::filter(infect==strain))
+  pvals[[paste0(strain,'_virus')]] <- summary(mod)$coefficients['backgroundACE2',4]
+  mod <- glmer(ACE2_positive ~ background + (1 | orig.ident),family='binomial',data=md %>% dplyr::filter(infect==strain))
+  pvals[[paste0(strain,'_ACE2')]] <- summary(mod)$coefficients['backgroundACE2',4]
+}
+
+pv <- data.frame(pval=unlist(pvals),
+                 infect=gsub('_.*','',names(pvals)),
+                 key=gsub('.*_','',names(pvals))) %>%
+  dplyr::mutate(p=stars.pval(pval))
+
+p1 <- ggplot(md %>%
+         dplyr::group_by(orig.ident,infect,background,timepoint) %>%
+         dplyr::summarise(n=n(),virus_pos=sum(virus_positive),ACE2_pos=sum(ACE2_positive)) %>%
+         dplyr::mutate(virus_frac=virus_pos/n,
+                       ACE2_frac=ACE2_pos/n,
+                       infect=revalue(infect,strain_map)) %>%
+         gather(key,frac,-c(background,infect,timepoint,orig.ident,n,virus_pos,ACE2_pos)) %>%
+         dplyr::mutate(label=ifelse(grepl('virus',key),'virus-positive\ncells','ACE2-positive\ncells')),
+       aes(x=infect,fill=background,y=100*frac,color=background)) + 
+  geom_boxplot(outlier.shape=NA,position=position_dodge(.8)) +
+  geom_point(aes(shape=timepoint,group=background),size=1,position=position_dodge(.8),color='black') +
+  geom_text(data=pv,aes(x=infect,y=Inf,label=p),inherit.aes=FALSE,size=3) +
+  scale_fill_manual(values=background_colors,guide=guide_legend(ncol=1)) +
+  scale_color_manual(values=background_colors,guide=guide_legend(ncol=1)) +
+  scale_shape_manual(values=c('16h'=3,'48h'=4),guide=guide_legend(ncol=1)) +
+  theme_classic() +
+  coord_cartesian(clip='off') +
+  facet_wrap(~label) +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        strip.background=element_blank(),
+        axis.title.x=element_blank(),
+        legend.key.size=unit(4,'mm'),
+        legend.title=element_blank(),
+        legend.margin=margin(0,0,0,0),
+        legend.position='bottom') + 
+  labs(x='',y='percentage',fill='',color='',shape='')
+
+scAM_subgenomic_reads <- rbind(read.csv('data/read_stats/AM_SCoV2_subgenomic_reads.csv',header=1,row.names=1) %>%
+                                 tibble::rownames_to_column('file'),
+                               read.csv('data/read_stats/AM_NL63_subgenomic_reads.csv',header=1,row.names=1) %>%
+                                 tibble::rownames_to_column('file')) %>%
+  dplyr::mutate(donor=gsub('../cellranger_output_(.*)_(.*)_(.*)_(.*)/outs/possorted_genome_bam.bam','\\1',file),
+                infect=gsub('../cellranger_output_(.*)_(.*)_(.*)_(.*)/outs/possorted_genome_bam.bam','\\2',file),
+                background=gsub('../cellranger_output_(.*)_(.*)_(.*)_(.*)/outs/possorted_genome_bam.bam','\\3',file),
+                timepoint=gsub('../cellranger_output_(.*)_(.*)_(.*)_(.*)/outs/possorted_genome_bam.bam','\\4',file)) %>%
+  dplyr::mutate(infect=revalue(infect,strain_map),
+                background=factor(gsub('ctrl','mock',background),levels=c('mock','ACE2')))
+
+p <- data.frame(viral=sapply(c('SARS-CoV-2','NL63-CoV'), 
+                         function(x) summary(glm(cbind(n_viral,n_tot-n_viral) ~ timepoint + background, 
+                                                 family='binomial',
+                                                 data=scAM_subgenomic_reads %>% dplyr::filter(infect==x)))$coefficients['backgroundACE2',4]),
+                subgenomic=sapply(c('SARS-CoV-2','NL63-CoV'), 
+                                               function(x) summary(glm(cbind(n_subgenomic,n_viral-n_subgenomic) ~ timepoint + background, 
+                                                            family='binomial',
+                                                            data=scAM_subgenomic_reads %>% dplyr::filter(infect==x)))$coefficients['backgroundACE2',4]),
+                infect=c('SARS-CoV-2','NL63-CoV')) %>%
+  gather(metric,p,-infect) %>%
+  dplyr::mutate(metric=factor(ifelse(metric=='viral','viral\nreads','of those,\nsubgenomic'),
+                              levels=c('viral\nreads','of those,\nsubgenomic'))) 
+  
+p2 <- scAM_subgenomic_reads %>%
+  dplyr::mutate(pct.viral=100*(n_viral/n_tot),
+                pct.subgenomic=100*(n_subgenomic/n_viral)) %>%
+  dplyr::select(-c(n_tot,n_viral,n_subgenomic)) %>%
+  gather(metric,value,-c(file,donor,infect,background,timepoint)) %>%
+  dplyr::mutate(metric=factor(ifelse(metric=='pct.viral','viral\nreads','of those,\nsubgenomic'),
+                              levels=c('viral\nreads','of those,\nsubgenomic'))) %>%
+  ggplot(aes(x=infect,y=value,fill=background,color=background)) +
+  geom_boxplot(outlier.shape=NA,position=position_dodge(.8)) +
+  geom_point(aes(shape=timepoint,group=background),size=1,position=position_dodge(.8),color='black') +
+  geom_text(data=p,aes(x=infect,y=Inf,label=stars.pval(p)),size=2,inherit.aes=FALSE) +
+  scale_fill_manual(values=background_colors,guide=guide_legend(ncol=1)) +
+  scale_color_manual(values=background_colors,guide=guide_legend(ncol=1)) +
+  scale_shape_manual(values=c('16h'=3,'48h'=4),guide=guide_legend(ncol=1)) +
+  theme_classic() +
+  facet_wrap(~metric,ncol=2,scales='free_y') +
+  coord_cartesian(clip='off') +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1),
+        strip.background=element_blank(),
+        axis.title.x=element_blank(),
+        legend.margin=margin(0,0,0,0),
+        legend.key.size=unit(4,'mm'),
+        legend.position='bottom') + 
+  labs(x='',y='percentage',fill='',color='',shape='')
+
+plot_grid(p1,p2,ncol=2,align='vh')
+```
+
+Figure 7G
+
+```{r Fig_7G,fig.width=4,fig.height=3.5}
+stats <- read.csv('data/read_stats/ex_vivo_AM_stats.txt',sep='\t',header=TRUE)
+cov_SCoV2 <- do.call(rbind,lapply(stats$sample[grepl('SCoV2',stats$sample)], 
+                                  function(x) read.csv(paste0('data/read_stats/',x,'_cov.txt'),
+                                                       sep='\t',header=FALSE,col.names=c('chrom','pos','cov')) %>%
+                                    dplyr::mutate(sample=x))) %>%
+  spread(sample,cov,fill=0) %>%
+  gather(sample,cov,-c(chrom,pos)) %>%
+  dplyr::mutate(infect=revalue(gsub('AM([0-9]*[A-Z])_([A-Za-z0-9]*)_([A-Za-z0-9]*)_([0-9]*h)','\\2', sample),strain_map),
+                background=factor(revalue(gsub('AM([0-9]*[A-Z])_([A-Za-z0-9]*)_([A-Za-z0-9]*)_([0-9]*h)','\\3', sample),c('ctrl'='mock')),
+                                  levels=c('mock','ACE2')),
+                timepoint=gsub('AM([0-9]*[A-Z])_([A-Za-z0-9]*)_([A-Za-z0-9]*)_([0-9]*h)','\\4', sample)) %>%
+  dplyr::left_join(stats,by='sample') %>%
+  dplyr::mutate(rel_cov=cov/(mapped/1.e6)) %>%
+  #dplyr::mutate(rel_cov=cov/max(cov)) %>%
+  dplyr::group_by(sample) %>%
+  dplyr::mutate(rel_cov=rollapply(rel_cov,10,mean,align='left',fill=NA)) %>%
+  dplyr::group_by(pos,background) %>%
+  dplyr::summarise(mean=mean(rel_cov,na.rm=TRUE),
+                   se=sd(rel_cov,na.rm=TRUE)/sqrt(n()))
+
+p1_SCoV2 <- ggplot(cov_SCoV2, aes(x=pos,y=mean,ymin=mean-se,ymax=mean+se,
+                       color=background,group=background)) + 
+  geom_line() +
+  geom_ribbon(aes(fill=background), alpha=0.25, color=NA) +
+  scale_color_manual(values=background_colors,guide=guide_legend(ncol=2)) + 
+  scale_fill_manual(values=background_colors,guide=guide_legend(ncol=2)) + 
+  theme_classic()   +
+  scale_y_log10(limits=c(1.e0,1.e6)) + 
+  labs(y='coverage\nper million',x='',fill='',color='',title='')
+p2_SCoV2 <- ggplot(cov_SCoV2 %>% 
+                     myspread(background,c(mean,se)) %>%
+                     dplyr::mutate(log2ratio=log2((ACE2_mean)/(mock_mean)),
+                                   delta=(ACE2_se/(ACE2_mean)+mock_se/(mock_mean))/log(2)),
+                   aes(x=pos,y=log2ratio,ymin=log2ratio-delta,ymax=log2ratio+delta,
+                       color=ifelse(log2ratio > 0,'ACE2','mock'))) +
+  geom_line(aes(group=1),size=.5) +
+  #geom_point(size=.5) +
+  geom_hline(yintercept=0,size=.25,linetype='dashed',color='gray50') +
+  scale_color_manual(values=background_colors,guide=FALSE) +
+  theme_classic() +
+  labs(y='log2 ratio',x='position')
+
+plot_grid(p1_SCoV2+theme(legend.position=c(.5,.9),
+                   legend.title=element_blank(),
+                   axis.title.x=element_blank(),
+                   axis.text.x=element_blank(),
+                   plot.margin = margin(0, 5, 0, 0),
+                   legend.box='horizontal',
+                   legend.key.size=unit(4,'mm'),
+                   legend.margin=margin(0,0,0,0)),
+          p2_SCoV2+theme(plot.margin=margin(0,5,0,0)),
+          align='v',ncol=1)
+```
+
+Figure S7I
+
+```{r Fig_S7I,fig.width=4,fig.height=3.5}
+cov_NL63 <- do.call(rbind,lapply(stats$sample[grepl('NL63',stats$sample)], 
+                                  function(x) read.csv(paste0('data/read_stats/',x,'_cov.txt'),
+                                                       sep='\t',header=FALSE,col.names=c('chrom','pos','cov')) %>%
+                                    dplyr::mutate(sample=x))) %>%
+  spread(sample,cov,fill=0) %>%
+  gather(sample,cov,-c(chrom,pos)) %>%
+  dplyr::mutate(infect=revalue(gsub('AM([0-9]*[A-Z])_([A-Za-z0-9]*)_([A-Za-z0-9]*)_([0-9]*h)','\\2', sample),strain_map),
+                background=factor(revalue(gsub('AM([0-9]*[A-Z])_([A-Za-z0-9]*)_([A-Za-z0-9]*)_([0-9]*h)','\\3', sample),c('ctrl'='mock')),
+                                  levels=c('mock','ACE2')),
+                timepoint=gsub('AM([0-9]*[A-Z])_([A-Za-z0-9]*)_([A-Za-z0-9]*)_([0-9]*h)','\\4', sample)) %>%
+  dplyr::left_join(stats,by='sample') %>%
+  dplyr::mutate(rel_cov=cov/(mapped/1.e6)) %>%
+  #dplyr::mutate(rel_cov=cov/max(cov)) %>%
+  dplyr::group_by(sample) %>%
+  dplyr::mutate(rel_cov=rollapply(rel_cov,10,mean,align='left',fill=NA)) %>%
+  dplyr::group_by(pos,background) %>%
+  dplyr::summarise(mean=mean(rel_cov,na.rm=TRUE),
+                   se=sd(rel_cov,na.rm=TRUE)/sqrt(n()))
+
+p1_NL63 <- ggplot(cov_NL63, aes(x=pos,y=mean,ymin=mean-se,ymax=mean+se,
+                       color=background,group=background)) + 
+  geom_line() +
+  geom_ribbon(aes(fill=background), alpha=0.25, color=NA) +
+  scale_color_manual(values=background_colors,guide=guide_legend(ncol=2)) + 
+  scale_fill_manual(values=background_colors,guide=guide_legend(ncol=2)) + 
+  theme_classic()   +
+  scale_y_log10(limits=c(1.e0,1.e6)) + 
+  labs(y='coverage\nper million',x='',fill='',color='',title='')
+p2_NL63 <- ggplot(cov_NL63 %>%
+                     myspread(background,c(mean,se)) %>%
+                     dplyr::mutate(log2ratio=log2((ACE2_mean)/(mock_mean)),
+                                   delta=(ACE2_se/(ACE2_mean)+mock_se/(mock_mean))/log(2)),
+                   aes(x=pos,y=log2ratio,ymin=log2ratio-delta,ymax=log2ratio+delta,
+                       color=ifelse(log2ratio > 0,'ACE2','mock'))) +
+  geom_line(aes(group=1),size=.5) +
+  #geom_point(size=.5) +
+  geom_hline(yintercept=0,size=.25,linetype='dashed',color='gray50') +
+  scale_color_manual(values=background_colors,guide=FALSE) +
+  theme_classic() +
+  labs(y='log2 ratio',x='position')
+
+plot_grid(p1_NL63+theme(legend.position=c(.5,.9),
+                   legend.title=element_blank(),
+                   axis.title.x=element_blank(),
+                   axis.text.x=element_blank(),
+                   plot.margin = margin(0, 5, 0, 0),
+                   legend.box='horizontal',
+                   legend.key.size=unit(4,'mm'),
+                   legend.margin=margin(0,0,0,0)),
+          p2_NL63+theme(plot.margin=margin(0,5,0,0)),
+          align='v',ncol=1)
+```
+
+Figure S7J
+
+```{r Fig_S7J,fig.width=4,fig.height=3.5}
+stats <- read.csv('data/read_stats/lung_explant_stats.txt',sep='\t',header=TRUE)
+
+strain_colors_here <- c('MERS-CoV'='cornflowerblue','SARS-CoV-2'='coral2')
+
+cov <- do.call(rbind,lapply(stats$sample, 
+                            function(x) {
+                              tmp <- read.csv(paste0('data/read_stats/',x,'_cov.txt'),
+                                              sep='\t',header=FALSE,col.names=c('chrom','pos','cov'))
+                              strain <- ifelse(grepl('SCoV2',x),'SARS-CoV-2','MERS-CoV')
+                              pmax <- ifelse(strain=='SARS-CoV-2',29903,30119)
+                              pos_new <- seq(0,pmax,pmax/30000)
+                              data.frame(pos=seq(0,1,1./30000),
+                                         cov=approx(tmp$pos,tmp$cov,xout=pos_new,yleft=0,yright=0)$y,
+                                         chrom=tmp$chrom[1],
+                                         strain=strain,
+                                         sample=x)
+                              })) %>%
+  dplyr::left_join(stats,by='sample') %>%
+  dplyr::mutate(rel_cov=cov/(mapped/1.e6)) %>%
+  #dplyr::mutate(rel_cov=cov/max(cov)) %>%
+  dplyr::group_by(sample) %>%
+  dplyr::mutate(rel_cov=rollapply(rel_cov,10,mean,align='left',fill=NA)) %>%
+  dplyr::group_by(pos,strain) %>%
+  dplyr::summarise(mean=mean(rel_cov,na.rm=TRUE),
+                   se=sd(rel_cov,na.rm=TRUE)/sqrt(n()))
+
+p1 <- ggplot(cov %>% dplyr::filter(!is.na(mean)),
+             aes(x=pos,y=mean,ymin=mean-se,ymax=mean+se,
+                       color=strain,group=strain)) + 
+  geom_line() +
+  geom_ribbon(aes(fill=strain), alpha=0.25, color=NA) +
+  scale_color_manual(values=strain_colors_here,guide=guide_legend(ncol=2)) + 
+  scale_fill_manual(values=strain_colors_here,guide=guide_legend(ncol=2)) + 
+  scale_x_continuous(breaks=c(0,1),labels=c("5'","3'")) +
+  theme_classic()   +
+  scale_y_log10(limits=c(1.e0,1.e6)) + 
+  labs(y='coverage\nper million',x='',fill='',color='',title='') 
+p2 <- ggplot(cov %>% 
+               myspread(strain,c(mean,se)) %>%
+               dplyr::mutate(log2ratio=log2((`MERS-CoV_mean`)/(`SARS-CoV-2_mean`))),
+             aes(x=pos,y=log2ratio,color=ifelse(log2ratio > 0,'MERS-CoV','SARS-CoV-2'))) +
+  geom_line(aes(group=1)) +
+  geom_hline(yintercept=0,size=.25,linetype='dashed',color='gray50') +
+  scale_color_manual(values=strain_colors_here,guide=FALSE) +
+  scale_x_continuous(breaks=c(0,1),labels=c("5'","3'")) +
+  theme_classic() +
+  labs(y='log2 ratio',x='relative position')
+
+plot_grid(p1+theme(legend.position=c(.5,.9),
+                   legend.title=element_blank(),
+                   axis.title.x=element_blank(),
+                   axis.text.x=element_blank(),
+                   plot.margin = margin(0, 0, 0, 0),
+                   legend.box='horizontal',
+                   legend.key.size=unit(4,'mm'),
+                   legend.margin=margin(0,0,0,0)),
+          p2+theme(plot.margin=margin(0,0,0,0)),
+          align='v',ncol=1)
+```
+
+prepare Figs S7E+F
+
+```{r prep_Fig_S7E_F}
+momac[['Cluster']] <- momac$subcluster
+DefaultAssay(momac) <- 'RNA'
+
+autopsy <- subset(momac, origin=='autopsy')
+Idents(autopsy) <- 'Cluster'
+autopsy <- ScaleData(autopsy,verbose=FALSE) %>%
+  FindVariableFeatures(verbose=FALSE) %>%
+  ScaleData(verbose=FALSE) %>%
+  RunPCA(features=VariableFeatures(.),verbose=FALSE) 
+
+explant <- subset(momac, origin=='explant')
+explant$condition <- explant$infect
+Idents(explant) <- 'Cluster'
+explant <- ScaleData(explant,verbose=FALSE) %>%
+  FindVariableFeatures(verbose=FALSE) %>%
+  ScaleData(verbose=FALSE) %>%
+  RunPCA(features=VariableFeatures(.),verbose=FALSE) 
+
+delorey <- subset(readRDS('data/seurat/Delorey.rds'),
+                  subset=(Cluster=='Myeloid') & (method=='nuclei') & (doublet=='FALSE'))
+delorey$Cluster <- delorey$SubCluster
+delorey$orig.ident <- delorey$donor
+delorey$condition <- 'COVID'
+Idents(delorey) <- 'Cluster'
+
+delorey <- ScaleData(delorey,verbose=FALSE) %>%
+  FindVariableFeatures(verbose=FALSE)
+
+wendisch <- readRDS('data/seurat/Wendisch.rds')
+VariableFeatures(wendisch) <- row.names(wendisch)[wendisch@assays$RNA@meta.features$vst.variable]
+wendisch$condition <- gsub(' ','_',wendisch$dpso)
+wendisch$orig.ident <- as.character(wendisch$dataset)
+Idents(wendisch) <- 'Cluster'
+
+grant <- subset(readRDS('data/seurat/Grant.rds'),
+                subset=Cluster %in% c('MoAM1','MoAM2','MoAM3','MoAM4','Prolif. AM','TRAM1','TRAM2'))
+grant$orig.ident <- paste0('sample_',grant$Sample)
+grant$condition <- ifelse(grant[['COVID.19']]=='True','COVID','control')
+Idents(grant) <- 'Cluster'
+
+grant <- ScaleData(grant,verbose=FALSE) %>%
+  FindVariableFeatures(verbose=FALSE) 
+
+Liao <- readRDS('data/seurat/Liao.rds')
+DefaultAssay(Liao) <- 'RNA'
+Liao$Cluster <- Liao$Liao_group
+Idents(Liao) <-'Cluster'
+Liao$condition <- Liao$group
+
+Liao <- ScaleData(Liao,verbose=FALSE) %>%
+  FindVariableFeatures(verbose=FALSE)
+
+conditions <- list('Grant'=list('case'='COVID','control'='control'),
+                   'Liao'=list('case'=c('mild','severe'),
+                               'control'=c('healthy')),
+                   'explant'=list('case'=c('SCoV2'),
+                                  'control'=c('control')),
+                   'autopsy'=list('case'=c('acute','prolonged'),
+                                  'control'=c('control')),
+                   'Wendisch'=list('case'=c('day_7','day_10','day14','day_25'),
+                                   'control'=''),
+                   'Delorey'=list('case'=c('COVID'),
+                                  'control'=''))
+
+datasets <- c('Grant'=grant,'Wendisch'=wendisch,'Liao'=Liao,'Delorey'=delorey,'autopsy'=autopsy,'explant'=explant)
+tt <- table(unlist(sapply(datasets,VariableFeatures)))
+genes <- intersect(names(tt)[tt > 3],Reduce(intersect, sapply(datasets,row.names)))
+
+dfs <- list()
+mds <- list()
+for (ds in names(datasets)) {
+  datasets[[ds]]$group <- paste0(datasets[[ds]]$Cluster,'|',ds)
+  Idents(datasets[[ds]]) <- 'group'
+  tmp <- AverageExpression(datasets[[ds]],
+                           group.by='group',
+                           assays=c('RNA'),
+                           features=genes)$RNA 
+  r0 <- sum(datasets[[ds]]$condition %in% conditions[[ds]][['case']])/sum(datasets[[ds]]$condition %in% conditions[[ds]][['control']])
+  cn <- colnames(tmp)
+  mds[[ds]] <- data.frame(cn=cn,sample=cn,dataset=ds) %>% 
+    separate(cn,c('Cluster','dataset'),sep='\\|')  %>%
+    dplyr::inner_join(datasets[[ds]]@meta.data %>%
+                        dplyr::group_by(Cluster) %>%
+                        dplyr::summarise(r1=sum(condition %in% conditions[[ds]][['case']])/
+                                           sum(condition %in% conditions[[ds]][['control']])) %>%
+                        dplyr::mutate(enrich=log2(r1/r0)),
+                      by='Cluster') %>%
+    tibble::column_to_rownames('sample')
+  dfs[[ds]] <- tmp
+}
+
+names(dfs) <- NULL
+mat <- do.call(cbind,dfs)
+names(mds) <- NULL
+md <- do.call(rbind,mds)
+
+mat.corrected <- removeBatchEffect(mat, md$dataset)
+
+mat_genes <- row.names(mat.corrected)
+```
+
+Figure S7E 
+
+```{r Fig_S7E, fig.width=4,fig.height=5}
+library(RColorBrewer)
+library(circlize)
+
+R <- as.data.frame(cor(t(scale(t(mat.corrected))),use='na.or.complete'))
+R <- R[!grepl('explant|autopsy',row.names(R)),grepl('explant|autopsy',colnames(R))]
+
+md$dataset <- factor(ifelse(md$dataset %in% c('explant','autopsy'), md$dataset,
+                            paste0(md$dataset, ' et al.')), 
+                     levels=c('Delorey et al.','Grant et al.','Liao et al.','Wendisch et al.','autopsy','explant'))
+
+ha <- HeatmapAnnotation(df=md[colnames(R),'dataset',drop=FALSE],
+                        show_annotation_name=FALSE,
+                        annotation_legend_param=list(title_gp=gpar(fontface='plain',fontsize=8),
+                                                     title_position = "leftcenter-rot",
+                                                     labels_gp=gpar(fontsize=6)),
+                        show_legend=TRUE,
+                        simple_anno_size=unit(3,'mm'),
+                        col=list(dataset=setNames(brewer.pal(length(datasets),'Set1'),unique(md$dataset))))
+
+va <- HeatmapAnnotation(df=md[row.names(R),'dataset',drop=FALSE],
+                        show_annotation_name=FALSE,
+                        which='row',
+                        annotation_legend_param=list(title_gp=gpar(fontface='plain',fontsize=8),
+                                                     title_position = "leftcenter-rot",
+                                                     labels_gp=gpar(fontsize=6)),
+                        show_legend=TRUE,
+                        simple_anno_size=unit(3,'mm'),
+                        col=list(dataset=setNames(brewer.pal(length(datasets),'Set1'),unique(md$dataset))))
+
+label_map <- c('Macrophage CD163hi MERTKhi'='M\u03D5 *CD163^hi MERTK^hi*',
+               'Macrophage PPARGhi CD5Lhi'='M\u03D5 *PPARG^hi CD5L^hi*',
+               'Macrophage VCANhi FCN1hi'='M\u03D5 *VCAN^hi FCN1^hi*',
+               'Inflammatory monocytes CD14hiCD16hi'='infl Mono. *CD14^hi CD16^hi*',
+               'Macrophage metabolically active'='M\u03D5 metabolically  active',
+               'Macrophage LDB2hi OSMRhi YAP1hi'='M\u03D5 *LDB2^hi OSMR^hi YAP1^hi*')
+
+HM <- Heatmap(R,
+              cluster_columns=TRUE,
+              cluster_rows=TRUE,
+              show_row_names=TRUE,
+              show_column_names=TRUE,
+              show_row_dend=TRUE,
+              row_dend_gp=gpar(lwd=.25),
+              column_dend_gp=gpar(lwd=.25),
+              column_labels=gsub('\\|.*','',colnames(R)),
+              row_labels=gt_render(revalue(gsub('\\|.*','',row.names(R)),label_map)),
+              top_annotation=ha,
+              row_title_gp=gpar(fontsize=6),
+              column_names_gp=gpar(fontsize=6),
+              row_names_gp=gpar(fontsize=6),
+              column_dend_height = unit(3, "mm"),
+              row_dend_width = unit(3, "mm"),
+              col=colorRamp2(c(-.3, 0, .3), c("blue", "white", "red")),
+              left_annotation = va,
+              name='similarity',
+              #width=unit(4,'in'),
+              #height=unit(5,'in'),
+              heatmap_legend_param = list(
+                at = c(-.3, .3),
+                labels = c("low", "high"),
+                title = "similarity",
+                legend_height = unit(20, "mm"),
+                title_gp=gpar(fontface='plain',fontsize=8),
+                title_position = "leftcenter-rot",
+                labels_gp=gpar(fontsize=6))
+)
+
+draw(HM, merge_legend=TRUE, heatmap_legend_side = "left", 
+    annotation_legend_side = "left")
+```
+
+Figure S7F
+
+```{r Fig_S7F,fig.width=4,fig.height=8}
+take <- c('infl AM|explant','infl AM|autopsy',
+          'G1|Liao',
+          'Inflammatory monocytes CD14hiCD16hi|Delorey',
+          'Macrophage metabolically active|Delorey',
+          'MoAM2|Grant')
+
+our_genes <- c('TREM2','TGFB2','SPP1','CCL2','CCL3','CCL4','CCL7','IL1B','NLRP3','IL10RA','IL6','TNF','C1QA',
+               'C1QB','C1QC','CXCL9','CXCL10','CXCL11','CXCL16','CCR2','CD163','HLA-DRA','ITGAM','ITGAX','FGL2',
+               'TGFB1','COTL1','CTSL','IFI6','CXCL5','ISG15','CXCL10','CCL4','CXCL3','CXCL8','PTGS2','CCL20',
+               'FP236383.3','AOAH','FMN1','MERTK','DPYD','PPARG','ACP5','ALOX5AP','APOC1','FABP4','S100A9')
+grant_genes <- c('GOS2','CXCL8','CCL3','CCL4','CXCL9','CXCL10','CXCL11','IL1RN','C15orf48','SPP1','CCL8',
+                 'TNFSF10','DEFB1','IL27','CALHM6','PLTP','RNASE1','STAB1','CCL2','MAFB','CD14','CSF1R',
+                 'ITGAM','VCAN','CCL18','TREM2','MRC1','C1QA','FBP1','OLR1','MARCO','MCEMP1','MSR1','FABP4',
+                 'RBP4','INHBA')
+wendisch_genes <- c('CD14','FCGR3A','S100A8','S100A12','FCN1','VCAN','FPR1',
+                    'TGFB1','ITGAM','CLEC5A','MYC','DDX21','DPYD','TYMP',
+                    'CTSB','OLFML2B','CMKLR1','CCL13',
+                    'CD163','CD84','MERTK','LGMN','SDC3','SPP1','PLA2G7',
+                    'COL8A2','ABCC3','MRC1','TREM2','APOE',
+                    'CD9','EVL','GSN','CD52','APOC1','MARCO','BFP1','HLA-DRA',
+                    'MKI67','TOP2A','CENPA','BIRC5')
+
+liao_genes <- c('S100A9','S100A8','S100A12','VCAN','FCN1',
+                'IL1RN','CCL7','IFITM2','IFIT2','IFIT3','IER2','MX1',
+                'HSPA6','DNAJB1','HSPA1A','HSPA1B','CCL2','HSPB1',
+                'LGMN','SPP1','RGS1','RNASE1','CCL18','HMOX1','C1QC','SDS','ARL4C','CTSL',
+                'FABP4','CD52','APOC1','ALOX5AP','GCHFR','MARCO','HLA-DQB1')
+
+delorey_genes <- c('MERTK','CD163','PDE4B','SLC9A9','F13A1','ITGA9','CD86',
+                   'PPARG','TCF7L2','INHBA','SLC19A3','ITGB8','CD5L','IL17RB',
+                   'VCAN','MCTP2','FYN','FCN1',
+                   'CD14','FCGR3A','LYZ','APOE','C1QA','B2M',
+                   'SLC26A3','DHFR','MT-CO2','CD163','MERTK','F13A1',
+                   'PRKG1','LDB2','MECOM','ITGA1','YAP1','OSMR')
+
+genes_of_interest <- Reduce(union, c(our_genes,grant_genes,wendisch_genes,liao_genes,delorey_genes))
+genes_here <- mat_genes[order(rowSds(mat.corrected[,take]),decreasing=TRUE)[1:100]]
+
+inds <- which(genes_here %in% genes_of_interest)
+
+gene_va <- rowAnnotation(foo = anno_mark(at = inds, labels = genes_here[inds],
+                                         labels_gp=gpar(fontsize=5),
+                                         link_gp=gpar(lwd=.25),
+                                         link_width=unit(1,'cm')))
+ha <- HeatmapAnnotation(df=md[take,'dataset',drop=FALSE],
+                        show_annotation_name=FALSE,
+                        annotation_legend_param=list(title_gp=gpar(fontface='plain',fontsize=8),
+                                                     labels_gp=gpar(fontsize=6)),
+                        show_legend=TRUE,
+                        simple_anno_size=unit(3,'mm'),
+                        col=list(dataset=setNames(brewer.pal(length(datasets),'Set1'),unique(md$dataset))))
+
+HM <- Heatmap(t(scale(t(mat.corrected[genes_here,take]))),
+              cluster_columns=TRUE,
+              cluster_rows=TRUE,
+              show_row_names=FALSE,
+              show_column_names=TRUE,
+              show_row_dend=TRUE,
+              row_dend_gp=gpar(lwd=.25),
+              column_dend_gp=gpar(lwd=.25),
+              column_labels=gt_render(revalue(gsub('\\|.*','',colnames(mat.corrected[,take])),label_map)),
+              top_annotation=ha,
+              heatmap_legend_param=list(title_gp=gpar(fontface='plain',fontsize=8),
+                                        labels_gp=gpar(fontsize=6)),
+              row_title_gp=gpar(fontsize=6),
+              column_names_gp=gpar(fontsize=6),
+              name='z-score') + gene_va
+
+draw(HM, merge_legend=TRUE, heatmap_legend_side = "left", 
+    annotation_legend_side = "left")
+```
+
+```{r sessionInfo}
+sessionInfo()
+```

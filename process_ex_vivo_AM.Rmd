@@ -1,0 +1,183 @@
+---
+title: "process ex-vivo AM"
+output: 
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE, cache.lazy=FALSE, message=FALSE, warning=FALSE)
+library(Seurat)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(cowplot)
+library(igraph)
+library(Matrix)
+library(tidyr)
+library(stringr)
+library(DESeq2)
+library(dendextend)
+library(ggrepel)
+library(tmod)
+library(plyr)
+options(future.globals.maxSize = 10 * 1024 * 1024^2)
+```
+
+results on ex-vivo infected alveolar macrophages with 10X platform. 24 samples (2 donors, control+NL63+SCoV2, ACE2+ and ctrl, 2 timepoints).  alignment + quantification using `cellranger` against GRCh38+viral genome. we take cells with at least 500 UMIs
+
+```{r get_data,fig.width=8,fig.height=4}
+samples <- c(outer(c('AM723D','AM1212Z'),
+                   c(outer(c('SCoV2','NL63','control'),
+                           c(outer(c('ctrl','ACE2'),c('16h','48h'),
+                                   FUN=paste,sep='_')),
+                           FUN=paste,sep='_')),
+                   FUN=paste,sep='_'))
+
+source('ReadCB_h5.R')
+
+sobjs <- list()
+for (sample in samples) {
+  h5_file <- file.path('data','AM','cellbender',paste0(sample,'_filtered.h5'))
+  if (file.exists(h5_file)) {
+    dge <- ReadCB_h5(h5_file)
+    colnames(dge) <- paste0(gsub('_','-',sample),'_',colnames(dge))
+    scrublet <- read.csv(file.path('data','AM','scrublet',paste0(sample,'_scrublet.csv')),row.names=1)
+    row.names(scrublet) <- paste0(gsub('_','-',sample),'_',row.names(scrublet))
+    sobjs[[sample]] <- CreateSeuratObject(dge,project=sample,
+                                          assay='RNA',min.cells=1,min.features=500, 
+                                          meta.data=scrublet)
+  }
+}
+
+sobj <- merge(sobjs[[samples[1]]],sobjs[samples[2:length(samples)]])
+
+sobj[['donor']] <-  gsub('AM([0-9]*[A-Z])-([A-Za-z0-9]*)-([A-Za-z0-9]*)-([0-9]*h)','\\1', sobj@meta.data$orig.ident)
+sobj[['infect']] <-  gsub('AM([0-9]*[A-Z])-([A-Za-z0-9]*)-([A-Za-z0-9]*)-([0-9]*h)','\\2', sobj@meta.data$orig.ident)
+sobj[['background']] <-  gsub('AM([0-9]*[A-Z])-([A-Za-z0-9]*)-([A-Za-z0-9]*)-([0-9]*h)','\\3', sobj@meta.data$orig.ident)
+sobj[['timepoint']] <-  gsub('AM([0-9]*[A-Z])-([A-Za-z0-9]*)-([A-Za-z0-9]*)-([0-9]*h)','\\4', sobj@meta.data$orig.ident)
+sobj[['group']] <-  gsub('AM([0-9]*[A-Z])-([A-Za-z0-9]*)-([A-Za-z0-9]*)-([0-9]*h)','\\1.\\3.\\4', sobj@meta.data$orig.ident)
+
+sobj[['pct.mito']] <- PercentageFeatureSet(sobj, pattern='^MT-')
+sobj[['pct.ribo']] <- PercentageFeatureSet(sobj, pattern='^RP[SL][0-9]*$')
+sobj[['pct.SCoV2']] <- PercentageFeatureSet(sobj, pattern='^SCoV2-')
+sobj[['pct.NL63']] <- PercentageFeatureSet(sobj, pattern='^NL63-')
+sobj[['virus']] <- ifelse(sobj[['pct.SCoV2']] > 0, 'SCoV2', ifelse(sobj[['pct.NL63']] > 0, 'NL63', 'none'))
+```
+
+here's some basic statistics. 
+
+```{r stats,fig.width=10,fig.height=4}
+sobj@meta.data %>%
+  dplyr::group_by(orig.ident) %>%
+  dplyr::summarise(ncells=n(),
+                   nGene=median(nFeature_RNA),
+                   nUMI=median(nCount_RNA),
+                   pct.mito=mean(pct.mito),
+                   pct.ribo=mean(pct.ribo),
+                   pct.SCoV2=mean(pct.SCoV2),
+                   pct.NL63=mean(pct.NL63))
+
+ggplot(sobj@meta.data %>% 
+         dplyr::select(orig.ident, nCount_RNA, nFeature_RNA,  pct.mito, 
+                       pct.ribo, pct.SCoV2, pct.NL63) %>%
+         gather(metric,value,-orig.ident),
+       aes(x=orig.ident,y=value,fill=orig.ident)) + 
+  geom_boxplot(outlier.size=.5) + 
+  facet_wrap(~metric,ncol=3,scales='free_y') + 
+  theme(axis.text.x=element_blank())
+```
+
+perform standard Seurat workflow, keeping cells with less than 10% mitochondrial genes and less than 5000 genes and remove doublets
+
+```{r process}
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+sobj <- subset(sobj, (pct.mito < 10) & (nFeature_RNA < 5000) & (scrublet_prediction!='doublet')) %>%
+  NormalizeData(normalization.method='LogNormalize',scale.factor=10000,verbose=FALSE) %>%
+  FindVariableFeatures(selection.method='vst',nfeatures=2000,verbose=FALSE) %>%
+  ScaleData(vars.to.regress=c('nCount_RNA'),verbose=FALSE) %>%
+  CellCycleScoring(s.features = s.genes, g2m.features = g2m.genes) %>%
+  ScaleData(vars.to.regress=c('S.Score','G2M.Score'),verbose=FALSE) %>%
+  RunPCA(features=VariableFeatures(.),verbose=FALSE) %>%
+  FindNeighbors(dims=1:20,verbose=FALSE) %>%
+  RunUMAP(dims=1:20,verbose=FALSE)
+```
+
+there's quite  variability between the two timepoints and the treatments
+
+```{r show_before_correction,fig.width=6,fig.height=3.5}
+DimPlot(sobj,reduction='umap',group.by='donor')
+DimPlot(sobj,reduction='umap',group.by='background')
+DimPlot(sobj,reduction='umap',group.by='timepoint')
+DimPlot(sobj,reduction='umap',group.by='infect')
+DimPlot(sobj,reduction='umap',group.by='group')
+DimPlot(sobj,reduction='umap',group.by='Phase')
+```
+
+we remove the batch effect with `IntegrateData`
+
+```{r integrate}
+anchors <- SplitObject(sobj, split.by='donor') %>%
+  FindIntegrationAnchors(dims=1:20, verbose=FALSE)
+sobj <- IntegrateData(anchors, dims=1:20, verbose=FALSE)
+DefaultAssay(sobj) <- "integrated"
+sobj <- ScaleData(sobj,
+                  #vars.to.regress=c('nCount_RNA','pct.mito'),
+                  verbose = FALSE) %>%
+  RunPCA(npcs = 20, verbose = FALSE) %>%
+  FindNeighbors(dims=1:20, verbose = FALSE) %>%
+  RunUMAP(dims = 1:20,verbose = FALSE) %>%
+  FindClusters(resolution=.25, verbose=FALSE)
+
+DefaultAssay(sobj) <- 'RNA'
+```
+
+the same plots as before, now better overlap between timepoint
+
+```{r show_after_correction,fig.width=6,fig.height=3.5}
+DimPlot(sobj,reduction='umap',group.by='orig.ident') + NoLegend()
+DimPlot(sobj,reduction='umap',group.by='infect')
+DimPlot(sobj,reduction='umap',group.by='donor')
+DimPlot(sobj,reduction='umap',group.by='group')
+DimPlot(sobj,reduction='umap',group.by='background')
+DimPlot(sobj,reduction='umap',group.by='timepoint')
+DimPlot(sobj,reduction='umap',group.by='Phase')
+DimPlot(sobj,reduction='umap',label=TRUE)
+```
+
+here's a heatmap of cluster markers. 
+
+```{r markers,fig.width=15,fig.height=8}
+markers <- FindAllMarkers(sobj, only.pos = TRUE, min.pct = 0.25,
+                          thresh.use = 0.25,
+                          print.bar=FALSE, verbose=FALSE)
+
+write.csv(markers,'data/seurat/ex_vivo_AM_markers.csv',row.names=FALSE)
+
+top5 <- markers %>% 
+  group_by(cluster) %>% 
+  top_n(5, avg_logFC)
+
+top10 <- markers %>% 
+  group_by(cluster) %>% 
+  top_n(10, avg_logFC)
+
+DotPlot(sobj, features = unique(top5$gene)) + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5))
+```
+
+```{r save_data}
+strain_map <- c('H3N2'='IAV','MERS'='MERS-CoV','SCoV1'='SARS-CoV','SCoV2'='SARS-CoV-2', 'NL63'='NL63-CoV')
+donor_map <- c('pat89C'='pat1','pat195V'='pat2','pat641D'='pat3','pat663D'='pat4',
+               '89C'='pat1','700D'='pat2','1169Z'='pat3','218V'='pat4','219V'='pat5','102C'='pat6',
+               '17B'='pat7','BB73'='pat8','723D'='pat1','1212Z'='pat2')
+
+sobj[['background']] <- factor(gsub('ctrl','mock',sobj$background),levels=c('mock','ACE2'))
+sobj[['infect']] <- revalue(sobj$infect, strain_map)
+sobj[['cluster']] <- sobj$seurat_clusters
+sobj[['donor']] <- revalue(sobj$donor,donor_map)
+saveRDS(sobj,'data/seurat/ex_vivo_AM.rds')
+```

@@ -1,0 +1,129 @@
+---
+title: "recluster lung tissue macrophages"
+output: 
+  html_document:
+    df_print: paged
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE, cache.lazy=FALSE, message=FALSE, warning=FALSE)
+library(Seurat)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(cowplot)
+library(igraph)
+library(Matrix)
+library(tidyr)
+library(DESeq2)
+library(tmod)
+library(dendextend)
+library(stringr)
+library(GGally)
+library(DT)
+library(plyr)
+library(scales)
+library(gtools)
+library(lme4)
+options(future.globals.maxSize = 10 * 1024 * 1024^2)
+```
+
+use macrophages from the HuLu data (explants + autopsy)
+
+```{r get_data}
+lung <- readRDS('data/seurat/lung_combined_all.rds')
+
+momac <- subset(lung, idents = c('macrophages'))
+momac$cluster <- Idents(momac)
+momac$contrast <- ifelse(momac$origin=='explant',momac$infect,momac$condition)
+
+DefaultAssay(momac) <- 'RNA'
+```
+
+recluster these populations
+
+```{r recluster,fig.width=10,fig.height=10}
+DefaultAssay(momac) <- 'integrated'
+momac <- FindNeighbors(momac, dims=1:20, verbose = FALSE) %>%
+  RunUMAP(dims = 1:20, verbose = FALSE) %>%
+  FindClusters(verbose=FALSE, resolution=.25)
+
+CombinePlots(plots=list(DimPlot(momac,label=TRUE,split.by='origin'),
+                        DimPlot(momac,group.by='cluster',label=TRUE,split.by='origin'),
+                        DimPlot(momac,group.by='contrast',label=TRUE,split.by='origin')),ncol=1)
+CombinePlots(plots=list(DimPlot(momac,group.by='predicted.id',label=TRUE,repel=TRUE,label.size=2.5),
+                        DimPlot(momac,label=TRUE)),ncol=1)
+
+momac@meta.data %>%
+  dplyr::group_by(seurat_clusters,predicted.id) %>%
+  dplyr::summarise(n=n()) %>%
+  dplyr::mutate(frac=round(n/sum(n),2)) %>%
+  dplyr::filter(frac > .1)
+
+DefaultAssay(momac) <- 'RNA'
+```
+
+here's a dotplot of cluster markers. 
+
+```{r markers,fig.width=20,fig.height=6}
+markers <- FindAllMarkers(momac, only.pos = TRUE, min.pct = 0.25,
+                          thresh.use = 0.25,
+                          print.bar=FALSE, verbose=FALSE)
+
+top10 <- markers %>% 
+  group_by(cluster) %>% 
+  top_n(10, avg_logFC)
+
+DotPlot(momac, features = unique(top10$gene)) + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5))
+```
+
+take out contaminating clusters 4 and 5
+
+```{r filter,fig.width=10,fig.height=6}
+momac <- subset(momac, idents=c(4,5),invert=TRUE) %>%
+  FindNeighbors(dims=1:20, verbose = FALSE, assay='integrated') %>%
+  RunUMAP(dims = 1:20, verbose = FALSE, assay = 'integrated')
+
+momac <- RenameIdents(momac,
+                      '0'='AM',
+                      '1'='M\u03D5',
+                      '2'='act M\u03D5',
+                      '3'='infl AM')
+
+CombinePlots(plots=list(DimPlot(momac,label=TRUE),
+                        DimPlot(momac,group.by='cluster',label=TRUE),
+                        DimPlot(momac,group.by='origin',label=TRUE),
+                        DimPlot(momac,group.by='infect',label=TRUE)))
+
+momac$subcluster <- Idents(momac)
+```
+
+here's another dotplot of cluster markers. 
+
+```{r markers_2,fig.width=20,fig.height=6}
+markers <- FindAllMarkers(momac, only.pos = TRUE, min.pct = 0.25,
+                          thresh.use = 0.25,
+                          print.bar=FALSE, verbose=FALSE)
+
+top10 <- markers %>% 
+  group_by(cluster) %>% 
+  top_n(10, avg_logFC)
+
+DotPlot(momac, features = unique(top10$gene)) + 
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5))
+
+write.csv(markers,'data/seurat/lung_combined_macrophage_markers.csv')
+```
+
+```{r save_data}
+momac[['subcluster']] <- Idents(momac)
+saveRDS(momac,'data/seurat/lung_combined_macrophages.rds')
+writeLines(Cells(momac),'data/seurat/lung_combined_macrophages_barcodes.txt')
+write.csv(momac@meta.data,'data/seurat/lung_combined_macrophages_meta.csv')
+```
+
+```{r sessionInfo}
+sessionInfo()
+```
