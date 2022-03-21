@@ -11,19 +11,26 @@ processed data is available from NCBI GEO under accession [GSE198864](https://ww
   - lung organoids (GSM5958290-99)
 - bulk RNAseq: counts and metadata for lung tissue explants (GSM5958300-19)
 
-and should be downloaded and stored in the `cellranger` and `bulk_RNAseq` subfolders like so
+and should be downloaded and stored in the `cellranger` and `bulk_RNAseq` subfolders like so (GSM[0-9]*_ accession codes should be stripped off!)
 
 ```
 data
 ├── AM
 │   └── cellranger
+│       ├── AM1212Z_NL63_ACE2_16h_raw.h5 
+│       ├── AM1212Z_NL63_ACE2_48h_raw.h5
+│       └── ...
 ├── autopsy
 │   └── cellranger
+│       └── ...
 ├── explant
 │   ├── bulk_RNAseq
+│   │   └── ...
 │   └── cellranger
+│       └── ...
 └── organoids
     └── cellranger
+        └── ...
 ```
 
 final R objects are also available and should go into `data/seurat`
@@ -37,8 +44,8 @@ it could be run like so:
 ```
 for material in AM autopsy explant organoids; do
     while read -r sample ncells; do
-        bash run_cellbender.sh ${sample} ${ncells} ${material}
-    done < expected_cells_${material}.txt
+        bash scripts/run_cellbender.sh ${sample} ${ncells} ${material}
+    done < data/${material}/cellranger/expected_cells_${material}.txt
 done
 ```
 
@@ -51,14 +58,14 @@ for material in AM autopsy explant organoids; do
     mkdir -p data/${material}/scrublet
     for h5 in data/cellbender/*.h5; do
         sample=$(basename ${h5} _filtered.h5)
-        python run_scrublet.py -i data/${material}/cellbender/${h5} -o data/${material}/scrublet/${sample}_scrublet.csv
+        python scripts/run_scrublet.py -i data/${material}/cellbender/${h5} -o data/${material}/scrublet/${sample}_scrublet.csv
     done
 done
 ```
 
 ## Seurat processing
 
-R code is split into several markdowns that can be simply knitted
+R code in `R` is split into several markdowns that can be simply knitted
 
 pre-processing:
 
@@ -87,9 +94,9 @@ macrophage subclustering:
 
 [SCENIC](https://github.com/aertslab/SCENIC) is run on explant and autopsy macrophages separately
 
-1. prepare loom input files `python prepare_scenic.py`
-2. run scenic: `cd data/scenic; bash ../../run_scenic.sh`
-3. process results: `python process_scenic.py`
+1. prepare loom input files `python scripts/prepare_scenic.py`
+2. run scenic: `cd data/scenic; bash ../../scripts/run_scenic.sh`
+3. process results: `python scripts/process_scenic.py`
 
 ## scDiffCom
 
@@ -111,7 +118,7 @@ for the comparison with macrophages from other datasets, we downloaded and proce
 
 ## read mapping statistics
 
-note that bam files from which read statistics are derived cannot be provided due to data privacy restrictions; statistics has been extracted from bam files using `get_subgenomic_reads.py` and `get_coverage.sh`
+note that bam files from which read statistics are derived cannot be provided due to data privacy restrictions; statistics has been extracted from bam files using `scripts/get_subgenomic_reads.py` and `scripts/get_coverage.sh`
 
 ## paper figures
 

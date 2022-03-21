@@ -1,12 +1,12 @@
 ---
-title: "process alveolar organoids"
+title: "process explant controls"
 output: 
   html_document:
     df_print: paged
     code_folding: hide
 ---
 
-```{r setup}
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, cache=TRUE, cache.lazy=FALSE, message=FALSE, warning=FALSE)
 library(Seurat)
 library(dplyr)
@@ -19,43 +19,49 @@ library(tidyr)
 options(future.globals.maxSize = 10 * 1024 * 1024^2)
 ```
 
-results on alveolar organoids with 10X platform. 6 samples (3 donors, control+SCoV2).  alignment + quantification using `cellranger` against GRCh38+viral genome. we take all cells with at least 500 genes and mark doublets called by [scrublet](https://github.com/swolock/scrublet)
+results on primary lung explant tissue with 10X platform. 8 samples (6 donors, control only, FCS and BSA).  alignment + quantification using `cellranger` against GRCh38 genome. we take all cells with at least 500 genes and mark doublets called by [scrublet](https://github.com/swolock/scrublet).
 
 ```{r get_data,fig.width=8,fig.height=4}
-samples <- c("AO27_control","AO27_SCoV2",
-             "AO28_control","AO28_SCoV2",
-             "AO31_control","AO31_SCoV2")
+samples <- c('lung_700D_control',
+             'lung_89C_control',
+             'lung_1169Z_control',
+             'lung_218V_control',
+             'lung_219V_FCS',
+             'lung_219V_BSA',
+             'lung_102C_FCS',
+             'lung_102C_BSA')
 
 source('ReadCB_h5.R')
 
 sobjs <- list()
 for (sample in samples) {
-  h5_file <- file.path('data','organoids','cellbender',paste0(sample,'_filtered.h5'))
+  h5_file <- file.path('..','data','explant','cellbender',paste0(sample,'_filtered.h5'))
   if (file.exists(h5_file)) {
     dge <- ReadCB_h5(h5_file)
     colnames(dge) <- paste0(gsub('_','-',sample),'_',colnames(dge))
-    scrublet <- read.csv(file.path('data','organoids','scrublet',paste0(sample,'_scrublet.csv')),row.names=1)
+    scrublet <- read.csv(file.path('..','data','explant','scrublet',paste0(sample,'_scrublet.csv')),row.names=1)
     row.names(scrublet) <- paste0(gsub('_','-',sample),'_',row.names(scrublet))
     sobjs[[sample]] <- CreateSeuratObject(dge,project=sample,
                                           assay='RNA',min.cells=1,min.features=500, 
                                           meta.data=scrublet)
   }
 }
+
 sobj <- merge(sobjs[[1]],sobjs[2:length(samples)])
 
-sobj[['donor']] <- gsub('(AO[0-9]*)-([controlSCoV2]*)','\\1',
+sobj[['donor']] <-  gsub('lung-([0-9]*[A-Z])-([controlH3N2SCoV12MERSBSAFCS]*)','\\1',
                          sobj@meta.data$orig.ident)
-sobj[['infect']] <- gsub('(AO[0-9]*)-([controlSCoV2]*)','\\2',
-                          sobj@meta.data$orig.ident)
+sobj[['protocol']] <- ifelse(grepl('BSA',sobj@meta.data$orig.ident),'BSA','FCS')
+sobj[['origin']] <- 'explant'
+sobj[['infect']] <- 'control'
 
 sobj[['pct.mito']] <- PercentageFeatureSet(sobj, pattern='^MT-')
 sobj[['pct.ribo']] <- PercentageFeatureSet(sobj, pattern='^RP[SL][0-9]*$')
-sobj[['pct.SCoV2']] <- PercentageFeatureSet(sobj, pattern='^SCoV2-')
 ```
 
 here's some basic statistics. 
 
-```{r stats,fig.width=10,fig.height=3}
+```{r stats,fig.width=8,fig.height=2}
 sobj@meta.data %>%
   dplyr::group_by(orig.ident) %>%
   dplyr::summarise(ncells=n(),
@@ -63,64 +69,53 @@ sobj@meta.data %>%
                    nGene=median(nFeature_RNA),
                    nUMI=median(nCount_RNA),
                    pct.mito=mean(pct.mito),
-                   pct.ribo=mean(pct.ribo),
-                   pct.SCoV2=mean(pct.SCoV2))
+                   pct.ribo=mean(pct.ribo))
 
 ggplot(sobj@meta.data %>% 
          dplyr::select(orig.ident, nCount_RNA, nFeature_RNA,  pct.mito, 
-                       pct.ribo,pct.SCoV2) %>%
+                       pct.ribo) %>%
          gather(metric,value,-orig.ident),
        aes(x=orig.ident,y=value,fill=orig.ident)) + 
   geom_boxplot(outlier.size=.5) + 
-  theme_classic() +
-  facet_wrap(~metric,ncol=5,scales='free_y') + 
+  facet_wrap(~metric,ncol=4,scales='free_y') + 
   theme(axis.text.x=element_blank())
 ```
 
-```{r feature_scatter}
-ggplot(sobj@meta.data %>% dplyr::arrange(pct.mito), 
-       aes(x=nCount_RNA,y=nFeature_RNA,color=pct.mito)) + 
-  geom_point()  +
-  theme_classic()
-```
-
-perform standard Seurat workflow, keeping cells with less than 10% mitochondrial genes and less than 8000 genes and remove doublets
+perform standard Seurat workflow, keeping cells with less than 10% mitochondrial genes and less than 5000 genes and remove doublets
 
 ```{r process}
 s.genes <- cc.genes$s.genes
 g2m.genes <- cc.genes$g2m.genes
 
-sobj <- subset(sobj, (pct.mito < 10) & (nFeature_RNA < 8000) & (scrublet_prediction!='doublet')) %>%
+sobj <- subset(sobj, (pct.mito < 10) & (nFeature_RNA < 5000) & (scrublet_prediction!='doublet')) %>%
   NormalizeData(normalization.method='LogNormalize',scale.factor=10000,verbose=FALSE) %>%
   FindVariableFeatures(selection.method='vst',nfeatures=2000,verbose=FALSE) %>%
   ScaleData(vars.to.regress=c('nCount_RNA'),verbose=FALSE) %>%
   CellCycleScoring(s.features = s.genes, g2m.features = g2m.genes) %>%
-  ScaleData(vars.to.regress=c('S.Score','G2M.Score'),verbose=FALSE) %>%
   RunPCA(features=VariableFeatures(.),verbose=FALSE) %>%
   FindNeighbors(dims=1:20,verbose=FALSE) %>%
   RunUMAP(dims=1:20,verbose=FALSE)
 ```
 
-there's some variability between the donors
+there's some variability between the two donors, but BSA and FCS don't seem to add additional variability
 
-```{r show_before_correction,fig.width=6,fig.height=3.5}
+```{r show,fig.width=6,fig.height=3.5}
 DimPlot(sobj,reduction='umap',group.by='donor')
-DimPlot(sobj,reduction='umap',group.by='infect')
-DimPlot(sobj,reduction='umap',group.by='Phase')
+DimPlot(sobj,reduction='umap',group.by='protocol')
 ```
 
 we remove the batch effect with `IntegrateData`
 
 ```{r integrate}
-sobj <- SplitObject(sobj, split.by='donor') %>%
-  FindIntegrationAnchors(dims=1:20, verbose=FALSE) %>%
-  IntegrateData(dims=1:20, verbose=FALSE)
+sobjs <- SplitObject(sobj, split.by='donor')
+anchors <- FindIntegrationAnchors(sobjs, dims=1:20, verbose=FALSE)
+sobj <- IntegrateData(anchors, dims=1:20, verbose=FALSE)
 DefaultAssay(sobj) <- "integrated"
-sobj <- ScaleData(sobj, vars.to.regress=c('S.Score','G2M.Score','nCount_RNA','pct.mito'), 
+sobj <- ScaleData(sobj,
                   verbose = FALSE) %>%
   RunPCA(npcs = 20, verbose = FALSE) %>%
   FindNeighbors(dims=1:20, verbose = FALSE) %>%
-  RunUMAP(dims = 1:20,verbose = FALSE) %>%
+  RunUMAP(dims = 1:20, verbose = FALSE) %>%
   FindClusters(verbose=FALSE)
 ```
 
@@ -129,38 +124,20 @@ the same plots as before, now better overlap between donors
 ```{r show_integrated,fig.width=6,fig.height=3.5}
 DimPlot(sobj,reduction='umap',group.by='orig.ident')
 DimPlot(sobj,reduction='umap',group.by='donor')
-DimPlot(sobj,reduction='umap',group.by='infect')
 DimPlot(sobj,reduction='umap',group.by='Phase')
+DimPlot(sobj,reduction='umap',group.by='protocol')
 DimPlot(sobj,reduction='umap',label=TRUE)
 ```
 
-here's a dot plot of cluster markers. 
+we use the dataset by Travaglini et al. (bioRxiv https://doi.org/10.1101/742320 ) to score cell types. 
 
-```{r markers,fig.width=15,fig.height=8}
-markers <- FindAllMarkers(sobj, only.pos = TRUE, min.pct = 0.25,
-                          thresh.use = 0.25,
-                          print.bar=FALSE, verbose=FALSE)
-
-top5 <- markers %>% 
-  group_by(cluster) %>% 
-  top_n(5, avg_logFC)
-
-DotPlot(sobj, features = unique(top5$gene)) + 
-  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5))
-```
-
-we use the dataset by Travaglini et al. (bioRxiv https://doi.org/10.1101/742320 ) to score cell types, using only epithelial cells 
-
-```{r score_celltypes,fig.height=8,fig.width=6}
-travaglini <- readRDS('data/seurat/Travaglini_epi.rds')
-
-integration.features <- SelectIntegrationFeatures(list(sobj,travaglini), assay=c('RNA','RNA'), verbose=FALSE)
+```{r score_celltypes,fig.height=12,fig.width=10}
+travaglini <- readRDS('../data/seurat/Travaglini.rds')
+DefaultAssay(sobj) <- 'integrated'
 anchors <- FindTransferAnchors(reference = travaglini, query = sobj, dims = 1:20,
-                               features = integration.features,
-                               reference.assay='RNA',
-                               query.assay='RNA')
-
-pred <- TransferData(anchorset = anchors, refdata = travaglini$free_annotation, dims = 1:20, verbose=FALSE)
+                               features = intersect(row.names(travaglini@assays$RNA@scale.data),
+                                                    row.names(sobj@assays$integrated@scale.data)))
+pred <- TransferData(anchorset = anchors, refdata = travaglini$free_annotation, dims = 1:20)
 sobj <- AddMetaData(sobj, metadata=pred)
 sobj@meta.data %>%
   dplyr::group_by(seurat_clusters,predicted.id) %>%
@@ -193,31 +170,8 @@ DimPlot(sobj,group.by='DF.classifications')
 table(sobj$DF.classifications)
 ```
 
-cluster assignment
-
-```{r cluster_assignment}
-sobj <- RenameIdents(sobj,
-                         '0'='AT2',
-                         '1'='AT2',
-                         '2'='AT2',
-                         '3'='AT2',
-                         '4'='AT2',
-                         '5'='AT2',
-                         '6'='AT2',
-                         '7'='AT2',
-                         '8'='basal',
-                         '9'='secretory',
-                         '10'='ciliated',
-                         '11'='basal',
-                         '12'='AT2')
-sobj[['virus']] <- ifelse(sobj$pct.SCoV2 > 0,'SCoV2','none')
-sobj[['celltype']] <- Idents(sobj)
-sobj[['type']] <- 'alveolar'
-DefaultAssay(sobj) <- 'RNA'
-```
-
 ```{r save_data}
-saveRDS(sobj,file='data/seurat/alveolar_organoids.rds')
+saveRDS(sobj,file='../data/seurat/lung_explant_controls.rds')
 ```
 
 ```{r sessionInfo}

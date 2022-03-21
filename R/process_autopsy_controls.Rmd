@@ -29,11 +29,11 @@ source('ReadCB_h5.R')
 
 sobjs <- list()
 for (sample in samples) {
-  h5_file <- file.path('data','autopsy','cellbender',paste0(sample,'_filtered.h5'))
+  h5_file <- file.path('..','data','autopsy','cellbender',paste0(sample,'_filtered.h5'))
   if (file.exists(h5_file)) {
     dge <- ReadCB_h5(h5_file)
     colnames(dge) <- paste0(gsub('_','-',sample),'_',colnames(dge))
-    scrublet <- read.csv(file.path('data','autopsy','scrublet',paste0(sample,'_scrublet.csv')),row.names=1)
+    scrublet <- read.csv(file.path('..','data','autopsy','scrublet',paste0(sample,'_scrublet.csv')),row.names=1)
     row.names(scrublet) <- paste0(gsub('_','-',sample),'_',row.names(scrublet))
     sobjs[[sample]] <- CreateSeuratObject(dge,project=sample,
                                           assay='RNA',min.cells=1,min.features=500, 
@@ -123,7 +123,7 @@ DimPlot(sobj,reduction='umap',label=TRUE)
 we use the dataset by Travaglini et al. (bioRxiv https://doi.org/10.1101/742320 ) to score cell types. 
 
 ```{r score_celltypes,fig.height=12,fig.width=10}
-travaglini <- readRDS('data/seurat/Travaglini.rds')
+travaglini <- readRDS('../data/seurat/Travaglini.rds')
 DefaultAssay(sobj) <- 'integrated'
 anchors <- FindTransferAnchors(reference = travaglini, query = sobj, dims = 1:20,
                                features = intersect(row.names(travaglini@assays$RNA@scale.data),
@@ -162,7 +162,7 @@ table(sobj$DF.classifications)
 ```
 
 ```{r save_data}
-saveRDS(sobj,file='data/seurat/lung_autopsy_controls.rds')
+saveRDS(sobj,file='../data/seurat/lung_autopsy_controls.rds')
 ```
 
 ```{r sessionInfo}

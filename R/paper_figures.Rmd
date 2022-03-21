@@ -87,7 +87,7 @@ myspread <- function(df, key, value) {
 # Figure 1 + S1
 
 ```{r get_data_fig1}
-lung_control <- readRDS('data/seurat/lung_combined_control.rds')
+lung_control <- readRDS('../data/seurat/lung_combined_control.rds')
 ```
 
 Figure 1B
@@ -142,7 +142,7 @@ FetchData(lung_control,c('UMAP_1','UMAP_2','origin',markers)) %>%
 Figure S1A
 
 ```{r Fig_S1A,fig.width=9,fig.height=4}
-markers <- read.csv('data/seurat/lung_combined_control_markers.csv', stringsAsFactors=FALSE)
+markers <- read.csv('../data/seurat/lung_combined_control_markers.csv', stringsAsFactors=FALSE)
 
 top3 <- markers %>% 
   group_by(cluster) %>% 
@@ -158,7 +158,7 @@ DotPlot(lung_control, features = rev(top3$gene)) +
   scale_color_gradient2(low='blue3',high='red3') +
   labs(x='',y='')
 
-write.xlsx(markers, 'data/tables/Table_S3.xlsx', sheetName='cluster markers', row.names=FALSE)
+write.xlsx(markers, '../data/tables/Table_S3.xlsx', sheetName='cluster markers', row.names=FALSE)
 ```
 
 Figure S1B
@@ -190,8 +190,8 @@ ggplot(FetchData(lung_control,c('UMAP_1','UMAP_2',markers)) %>%
 # Figure 3 + S3
 
 ```{r get_data_fig3}
-alveolar <- readRDS('data/seurat/alveolar_organoids.rds')
-bronchial <- readRDS('data/seurat/bronchial_organoids.rds')
+alveolar <- readRDS('../data/seurat/alveolar_organoids.rds')
+bronchial <- readRDS('../data/seurat/bronchial_organoids.rds')
 
 cols <- c('orig.ident','type','celltype',
           'UMAP_1','UMAP_2',
@@ -359,33 +359,33 @@ plot_grid(p1,p2,p3,align='vh',ncol=3,rel_widths=c(.55,.225,.225))
 # Figure 6 + S6
 
 ```{r get_data_fig6}
-DE_results <- read.csv('data/differential_expression/bulkRNAseq_results.csv',row.names=1,header=1)
-rld <- readRDS('data/differential_expression/bulkRNAseq_rld.rds')
+DE_results <- read.csv('../data/differential_expression/bulkRNAseq_results.csv',row.names=1,header=1)
+rld <- readRDS('../data/differential_expression/bulkRNAseq_rld.rds')
 
-subgenomic_reads <- sapply(c('MERS-CoV','SARS-CoV','SARS-CoV-2'), function(x) read.csv(paste0('data/read_stats/bulkRNAseq_',x,'_subgenomic_reads.csv'),header=1,row.names=1),
+subgenomic_reads <- sapply(c('MERS-CoV','SARS-CoV','SARS-CoV-2'), function(x) read.csv(paste0('../data/read_stats/bulkRNAseq_',x,'_subgenomic_reads.csv'),header=1,row.names=1),
                            USE.NAMES=TRUE,simplify=FALSE)
 
-idx_stats <- read.csv('data/read_stats/bulkRNAseq_idxstats.txt',row.names=1,header=1)
+idx_stats <- read.csv('../data/read_stats/bulkRNAseq_idxstats.txt',row.names=1,header=1)
 
 msig <- tmodImportMSigDB('msigdb_v7.2.xml')
-lung_all <- readRDS('data/seurat/lung_combined_all.rds')
+lung_all <- readRDS('../data/seurat/lung_combined_all.rds')
 
-pseudobulk_explant <- read.csv('data/differential_expression/lung_explant_pseudobulk_DE.csv',row.names=1) %>%
+pseudobulk_explant <- read.csv('../data/differential_expression/lung_explant_pseudobulk_DE.csv',row.names=1) %>%
   dplyr::mutate(contrast=infect,
                 origin='explant') %>%
   dplyr::select(-infect)
-pseudobulk_autopsy <- read.csv('data/differential_expression/lung_autopsy_pseudobulk_DE.csv',row.names=1) %>%
+pseudobulk_autopsy <- read.csv('../data/differential_expression/lung_autopsy_pseudobulk_DE.csv',row.names=1) %>%
   dplyr::mutate(contrast=condition,
                 origin='autopsy') %>%
   dplyr::select(-condition)
 pseudobulk <- rbind(pseudobulk_explant,pseudobulk_autopsy)
 
-loglog_explant <- read.csv('data/differential_expression/lung_explant_regression_DE.csv',row.names=1)  %>%
+loglog_explant <- read.csv('../data/differential_expression/lung_explant_regression_DE.csv',row.names=1)  %>%
   dplyr::filter(abs(estimate) < 20) %>%
   dplyr::mutate(contrast=infect,
                 origin='explant') %>%
   dplyr::select(-infect)
-loglog_autopsy <- read.csv('data/differential_expression/lung_autopsy_regression_DE.csv',row.names=1)%>%
+loglog_autopsy <- read.csv('../data/differential_expression/lung_autopsy_regression_DE.csv',row.names=1)%>%
   dplyr::filter(abs(estimate) < 20) %>%
   dplyr::mutate(contrast=condition,
                 origin='autopsy') %>%
@@ -414,7 +414,7 @@ addWorksheet(wb, sheetName='SARS-CoV-2 DEGs')
 writeData(wb, sheet='SARS-CoV-2 DEGs',
           x=DE_results %>% dplyr::filter(infect=='SARS-CoV-2',padj < .05),
           rowNames=TRUE)
-saveWorkbook(wb, file = file.path("data/tables/Table_S4.xlsx"), overwrite=TRUE)
+saveWorkbook(wb, file = file.path("../data/tables/Table_S4.xlsx"), overwrite=TRUE)
 ```
 
 Figure S6A
@@ -831,9 +831,9 @@ p1 <- ggplot(tmp,aes(x=explant_mean_frac,
 tmp2 <- list()
 for (og in grep('SCoV2|akut',unique(lung_all$orig.ident),value=TRUE)) {
   if (grepl('lung',og)) {
-    dge <- Read10X_h5(paste0('data/explant/cellranger/', gsub('-','_',og),'_filtered.h5'))
+    dge <- Read10X_h5(paste0('../data/explant/cellranger/', gsub('-','_',og),'_raw.h5'))
   } else {
-    dge <- Read10X_h5(paste0('data/autopsy/cellranger/', og,'_filtered.h5'))
+    dge <- Read10X_h5(paste0('../data/autopsy/cellranger/', og,'_raw.h5'))
   }
   cells <- intersect(gsub('.*_','',Cells(lung_all)[lung_all$orig.ident==gsub('_','-',og)]),colnames(dge))
   SCoV2_genes <- grep('^SCoV2',row.names(dge),value=TRUE)
@@ -1266,7 +1266,7 @@ Figure S6H
 
 ```{r Fig_S6H,fig.width=2.5,fig.height=4.5}
 library(ggraph)
-CCI <- read.csv('data/scDiffCom/CCI_tables.csv',row.names=1,header=1)
+CCI <- read.csv('../data/scDiffCom/CCI_tables.csv',row.names=1,header=1)
 
 l2 <- data.frame(x=c(-1,1),y=c(0,0),row.names=c('macrophages','T cells'))
 
@@ -1329,16 +1329,16 @@ plot_grid(plots[['acute']]+theme(legend.position='none'),
 # Figure 7 + S7
 
 ```{r get_data_fig7}
-lung_explant <- readRDS('data/seurat/lung_explant_all.rds')
-lung_autopsy <- readRDS('data/seurat/lung_autopsy_all.rds')
+lung_explant <- readRDS('../data/seurat/lung_explant_all.rds')
+lung_autopsy <- readRDS('../data/seurat/lung_autopsy_all.rds')
 
-momac <- readRDS('data/seurat/lung_combined_macrophages.rds')
+momac <- readRDS('../data/seurat/lung_combined_macrophages.rds')
 
-AM <- readRDS('data/seurat/ex_vivo_AM.rds')
+AM <- readRDS('../data/seurat/ex_vivo_AM.rds')
 
-scAM_DE_ctrl <- read.csv('data/differential_expression/ex_vivo_AM_ctrl_pseudobulk_DE.csv',stringsAsFactors=FALSE)
-scAM_DE_ACE2 <- read.csv('data/differential_expression/ex_vivo_AM_ACE2_pseudobulk_DE.csv',stringsAsFactors=FALSE)
-scAM_tmod <- read.csv('data/differential_expression/ex_vivo_AM_pseudobulk_DE_tmod.csv')
+scAM_DE_ctrl <- read.csv('../data/differential_expression/ex_vivo_AM_ctrl_pseudobulk_DE.csv',stringsAsFactors=FALSE)
+scAM_DE_ACE2 <- read.csv('../data/differential_expression/ex_vivo_AM_ACE2_pseudobulk_DE.csv',stringsAsFactors=FALSE)
+scAM_tmod <- read.csv('../data/differential_expression/ex_vivo_AM_pseudobulk_DE_tmod.csv')
 ```
 
 Figure 7A
@@ -1502,7 +1502,7 @@ explant_doublets$subcluster <- 'AM-AT2 doublet'
 tmp <- merge(momac, explant_doublets)
 tmp$subcluster <- factor(tmp$subcluster, levels=c('AM','M\u03D5','act M\u03D5','infl AM', 'AM-AT2 doublet'))
 
-markers <- read.csv('data/seurat/lung_combined_macrophage_markers.csv',
+markers <- read.csv('../data/seurat/lung_combined_macrophage_markers.csv',
                     stringsAsFactors=FALSE,row.names=1)
 
 top5 <- markers %>%
@@ -1673,10 +1673,10 @@ rbind(signal,ctrl) %>%
 Figure S7D
 
 ```{r Fig_S7D,fig.width=7.5,fig.height=3}
-scenic_explants <- read.csv('data/scenic/momac_scenic_explant_AUC.csv',
+scenic_explants <- read.csv('../data/scenic/momac_scenic_explant_AUC.csv',
                    header=TRUE,row.names=1,check.names=FALSE)
 colnames(scenic_explants) <- gsub('_+','_',gsub('\\(\\+\\)','_regulon',colnames(scenic_explants)))
-scenic_autopsy <- read.csv('data/scenic/momac_scenic_autopsy_AUC.csv',
+scenic_autopsy <- read.csv('../data/scenic/momac_scenic_autopsy_AUC.csv',
                    header=TRUE,row.names=1,check.names=FALSE)
 colnames(scenic_autopsy) <- gsub('_+','_',gsub('\\(\\+\\)','_regulon',colnames(scenic_autopsy)))
 regs <- intersect(colnames(scenic_explants),colnames(scenic_autopsy))
@@ -1684,10 +1684,10 @@ scenic <- rbind(scenic_autopsy[,regs],scenic_explants[,regs])
 
 momac <- AddMetaData(momac, scenic)
 
-rss_explant <- read.csv('data/scenic/momac_explant_regulon_specificity_scores.csv',
+rss_explant <- read.csv('../data/scenic/momac_explant_regulon_specificity_scores.csv',
                         header=TRUE,row.names=1)
 row.names(rss_explant) <- gsub('_+','_',gsub('\\(\\+\\)','_regulon',row.names(rss_explant)))
-rss_autopsy <- read.csv('data/scenic/momac_autopsy_regulon_specificity_scores.csv',
+rss_autopsy <- read.csv('../data/scenic/momac_autopsy_regulon_specificity_scores.csv',
                         header=TRUE,row.names=1)
 row.names(rss_autopsy) <- gsub('_+','_',gsub('\\(\\+\\)','_regulon',row.names(rss_autopsy)))
 
@@ -2035,9 +2035,9 @@ p1 <- ggplot(md %>%
         legend.position='bottom') + 
   labs(x='',y='percentage',fill='',color='',shape='')
 
-scAM_subgenomic_reads <- rbind(read.csv('data/read_stats/AM_SCoV2_subgenomic_reads.csv',header=1,row.names=1) %>%
+scAM_subgenomic_reads <- rbind(read.csv('../data/read_stats/AM_SCoV2_subgenomic_reads.csv',header=1,row.names=1) %>%
                                  tibble::rownames_to_column('file'),
-                               read.csv('data/read_stats/AM_NL63_subgenomic_reads.csv',header=1,row.names=1) %>%
+                               read.csv('../data/read_stats/AM_NL63_subgenomic_reads.csv',header=1,row.names=1) %>%
                                  tibble::rownames_to_column('file')) %>%
   dplyr::mutate(donor=gsub('../cellranger_output_(.*)_(.*)_(.*)_(.*)/outs/possorted_genome_bam.bam','\\1',file),
                 infect=gsub('../cellranger_output_(.*)_(.*)_(.*)_(.*)/outs/possorted_genome_bam.bam','\\2',file),
@@ -2090,7 +2090,7 @@ plot_grid(p1,p2,ncol=2,align='vh')
 Figure 7G
 
 ```{r Fig_7G,fig.width=4,fig.height=3.5}
-stats <- read.csv('data/read_stats/ex_vivo_AM_stats.txt',sep='\t',header=TRUE)
+stats <- read.csv('../data/read_stats/ex_vivo_AM_stats.txt',sep='\t',header=TRUE)
 cov_SCoV2 <- do.call(rbind,lapply(stats$sample[grepl('SCoV2',stats$sample)], 
                                   function(x) read.csv(paste0('data/read_stats/',x,'_cov.txt'),
                                                        sep='\t',header=FALSE,col.names=c('chrom','pos','cov')) %>%
@@ -2203,13 +2203,13 @@ plot_grid(p1_NL63+theme(legend.position=c(.5,.9),
 Figure S7J
 
 ```{r Fig_S7J,fig.width=4,fig.height=3.5}
-stats <- read.csv('data/read_stats/lung_explant_stats.txt',sep='\t',header=TRUE)
+stats <- read.csv('../data/read_stats/lung_explant_stats.txt',sep='\t',header=TRUE)
 
 strain_colors_here <- c('MERS-CoV'='cornflowerblue','SARS-CoV-2'='coral2')
 
 cov <- do.call(rbind,lapply(stats$sample, 
                             function(x) {
-                              tmp <- read.csv(paste0('data/read_stats/',x,'_cov.txt'),
+                              tmp <- read.csv(paste0('../data/read_stats/',x,'_cov.txt'),
                                               sep='\t',header=FALSE,col.names=c('chrom','pos','cov'))
                               strain <- ifelse(grepl('SCoV2',x),'SARS-CoV-2','MERS-CoV')
                               pmax <- ifelse(strain=='SARS-CoV-2',29903,30119)
@@ -2284,7 +2284,7 @@ explant <- ScaleData(explant,verbose=FALSE) %>%
   ScaleData(verbose=FALSE) %>%
   RunPCA(features=VariableFeatures(.),verbose=FALSE) 
 
-delorey <- subset(readRDS('data/seurat/Delorey.rds'),
+delorey <- subset(readRDS('../data/seurat/Delorey.rds'),
                   subset=(Cluster=='Myeloid') & (method=='nuclei') & (doublet=='FALSE'))
 delorey$Cluster <- delorey$SubCluster
 delorey$orig.ident <- delorey$donor
@@ -2294,13 +2294,13 @@ Idents(delorey) <- 'Cluster'
 delorey <- ScaleData(delorey,verbose=FALSE) %>%
   FindVariableFeatures(verbose=FALSE)
 
-wendisch <- readRDS('data/seurat/Wendisch.rds')
+wendisch <- readRDS('../data/seurat/Wendisch.rds')
 VariableFeatures(wendisch) <- row.names(wendisch)[wendisch@assays$RNA@meta.features$vst.variable]
 wendisch$condition <- gsub(' ','_',wendisch$dpso)
 wendisch$orig.ident <- as.character(wendisch$dataset)
 Idents(wendisch) <- 'Cluster'
 
-grant <- subset(readRDS('data/seurat/Grant.rds'),
+grant <- subset(readRDS('../data/seurat/Grant.rds'),
                 subset=Cluster %in% c('MoAM1','MoAM2','MoAM3','MoAM4','Prolif. AM','TRAM1','TRAM2'))
 grant$orig.ident <- paste0('sample_',grant$Sample)
 grant$condition <- ifelse(grant[['COVID.19']]=='True','COVID','control')
@@ -2309,7 +2309,7 @@ Idents(grant) <- 'Cluster'
 grant <- ScaleData(grant,verbose=FALSE) %>%
   FindVariableFeatures(verbose=FALSE) 
 
-Liao <- readRDS('data/seurat/Liao.rds')
+Liao <- readRDS('../data/seurat/Liao.rds')
 DefaultAssay(Liao) <- 'RNA'
 Liao$Cluster <- Liao$Liao_group
 Idents(Liao) <-'Cluster'

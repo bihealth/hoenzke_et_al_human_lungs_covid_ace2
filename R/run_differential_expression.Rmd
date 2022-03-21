@@ -22,7 +22,7 @@ library(tmod)
 # lung scRNAseq and snRNAseq data
 
 ```{r get_data}
-lung_all <- readRDS('data/seurat/lung_combined_all.rds')
+lung_all <- readRDS('../data/seurat/lung_combined_all.rds')
 DefaultAssay(lung_all) <- 'RNA'
 lung_all[['cluster']] <- Idents(lung_all)
 lung_all[['condition']] <- revalue(lung_all$condition, c('akut'='akut','control'='control',
@@ -103,7 +103,7 @@ for (cluster in c('all',clusters)) {
   })
 }
 
-write.csv(do.call(rbind,res),file='data/differential_expression/lung_explant_pseudobulk_DE.csv')
+write.csv(do.call(rbind,res),file='../data/differential_expression/lung_explant_pseudobulk_DE.csv')
 ```
 
 ```{r get_counts_autopsy}
@@ -163,7 +163,7 @@ for (cluster in c('all',clusters)) {
   })
 }
 
-write.csv(do.call(rbind,res),file='data/differential_expression/lung_autopsy_pseudobulk_DE.csv')
+write.csv(do.call(rbind,res),file='../data/differential_expression/lung_autopsy_pseudobulk_DE.csv')
 ```
 
 ```{r run_loglog_explants}
@@ -199,7 +199,7 @@ for (clust in clusters) {
   }
 }
 
-write.csv(do.call(rbind,res), 'data/differential_expression/lung_explant_regression_DE.csv')
+write.csv(do.call(rbind,res), '../data/differential_expression/lung_explant_regression_DE.csv')
 ```
 
 ```{r run_loglog_autopsy}
@@ -237,15 +237,15 @@ for (clust in clusters) {
   }
 }
 
-write.csv(do.call(rbind,res), 'data/differential_expression/lung_autopsy_regression_DE.csv')
+write.csv(do.call(rbind,res), '../data/differential_expression/lung_autopsy_regression_DE.csv')
 ```
 
 # bulk RNAseq
 
 ```{r bulkRNAseq,eval=FALSE}
 #### this should be run in R 3.5 with DESeq2_1.22.1
-counts <- read.csv('data/explant/bulk_RNAseq/bulk_RNAseq_counts.csv',row.names=1,header=1)
-meta <- read.csv('data/explant/bulk_RNAseq/bulk_RNAseq_metadata.csv',row.names=1,header=1)
+counts <- read.csv('../data/explant/bulk_RNAseq/bulk_RNAseq_counts.csv',row.names=1,header=1)
+meta <- read.csv('../data/explant/bulk_RNAseq/bulk_RNAseq_metadata.csv',row.names=1,header=1)
 row.names(meta) <- colnames(counts)
 dds <- DESeqDataSetFromMatrix(counts,colData=meta,design=~patient+treatment)
 dds <- DESeq(dds)
@@ -255,16 +255,16 @@ res <- do.call(rbind,
                    as.data.frame() %>%
                    tibble::rownames_to_column('gene_id') %>%
                    dplyr::mutate(infect=revalue(x,strain_map))))
-write.csv(res, "data/differential_expression/bulkRNAseq_results.csv")
+write.csv(res, "../data/differential_expression/bulkRNAseq_results.csv")
 rld <- vst(dds,blind=FALSE)
-saveRDS(rld,'data/differential_expression/DESeq2_rld.rds')
+saveRDS(rld,'../data/differential_expression/DESeq2_rld.rds')
 ```
 
 # ex-vivo AM
 
 
 ```{r AM_get_data}
-AM <- readRDS('data/seurat/ex_vivo_AM.rds')
+AM <- readRDS('../data/seurat/ex_vivo_AM.rds')
 ```
 
 differential expression: we sum up counts from each sample to get "pseudo-bulk" data, and then we can compare the different conditions
@@ -325,7 +325,7 @@ for (cluster in c("all")) {
 
 pseudobulk_ctrl <- do.call(rbind,res)
 
-write.csv(pseudobulk_ctrl,file='data/differential_expression/ex_vivo_AM_ctrl_pseudobulk_DE.csv')
+write.csv(pseudobulk_ctrl,file='../data/differential_expression/ex_vivo_AM_ctrl_pseudobulk_DE.csv')
 
 res <- list()
 for (cluster in c("all")) {
@@ -358,16 +358,16 @@ for (cluster in c("all")) {
 
 pseudobulk_ACE2 <- do.call(rbind,res)
 
-write.csv(pseudobulk_ctrl,file='data/differential_expression/ex_vivo_AM_ACE2_pseudobulk_DE.csv')
+write.csv(pseudobulk_ctrl,file='../data/differential_expression/ex_vivo_AM_ACE2_pseudobulk_DE.csv')
 ```
 
 use tmod for pathway enrichment
 
 ```{r AM_tmod_pseudobulk}
-pseudobulk <- rbind(read.csv('data/differential_expression/ex_vivo_AM_ctrl_pseudobulk_DE.csv',
+pseudobulk <- rbind(read.csv('../data/differential_expression/ex_vivo_AM_ctrl_pseudobulk_DE.csv',
                              header=1,row.names=1,stringsAsFactors=FALSE)  %>%
                       dplyr::mutate(background='ctrl'),
-                    read.csv('data/differential_expression/ex_vivo_AM_ACE2_pseudobulk_DE.csv',
+                    read.csv('../data/differential_expression/ex_vivo_AM_ACE2_pseudobulk_DE.csv',
                              header=1,row.names=1,stringsAsFactors=FALSE)  %>%
                       dplyr::mutate(background='ACE2'))
 
@@ -400,7 +400,7 @@ write.csv(tmods %>%
             dplyr::mutate(dataset=gsub('\\..*','',tmp)) %>%
             dplyr::mutate(contrast=gsub('.*_([^_]*)_.*','\\1',dataset)) %>%
             dplyr::mutate(background=gsub('([^_]*)_.*','\\1',dataset)),
-          file='data/differential_expression/ex_vivo_AM_pseudobulk_DE_tmod.csv')
+          file='../data/differential_expression/ex_vivo_AM_pseudobulk_DE_tmod.csv')
 ```
 
 

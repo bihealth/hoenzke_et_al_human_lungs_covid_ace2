@@ -39,11 +39,11 @@ source('ReadCB_h5.R')
 
 sobjs <- list()
 for (sample in samples) {
-  h5_file <- file.path('data','AM','cellbender',paste0(sample,'_filtered.h5'))
+  h5_file <- file.path('..','data','AM','cellbender',paste0(sample,'_filtered.h5'))
   if (file.exists(h5_file)) {
     dge <- ReadCB_h5(h5_file)
     colnames(dge) <- paste0(gsub('_','-',sample),'_',colnames(dge))
-    scrublet <- read.csv(file.path('data','AM','scrublet',paste0(sample,'_scrublet.csv')),row.names=1)
+    scrublet <- read.csv(file.path('..','data','AM','scrublet',paste0(sample,'_scrublet.csv')),row.names=1)
     row.names(scrublet) <- paste0(gsub('_','-',sample),'_',row.names(scrublet))
     sobjs[[sample]] <- CreateSeuratObject(dge,project=sample,
                                           assay='RNA',min.cells=1,min.features=500, 
@@ -179,5 +179,5 @@ sobj[['background']] <- factor(gsub('ctrl','mock',sobj$background),levels=c('moc
 sobj[['infect']] <- revalue(sobj$infect, strain_map)
 sobj[['cluster']] <- sobj$seurat_clusters
 sobj[['donor']] <- revalue(sobj$donor,donor_map)
-saveRDS(sobj,'data/seurat/ex_vivo_AM.rds')
+saveRDS(sobj,'../data/seurat/ex_vivo_AM.rds')
 ```

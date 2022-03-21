@@ -24,11 +24,11 @@ options(future.globals.maxSize = 10 * 1024 * 1024^2)
 2nd dataset: scRNAseq results on lung explant tissue (remove DF doublet calls)
 
 ```{r get_data,fig.width=8,fig.height=4}
-autopsy <- readRDS('data/seurat/lung_autopsy_all.rds')
+autopsy <- readRDS('../data/seurat/lung_autopsy_all.rds')
 autopsy <- subset(autopsy, subset=DF.classifications=='Singlet')
 autopsy[['autopsy.cluster']] <- Idents(autopsy)
 
-explant <- readRDS('data/seurat/lung_explant_all.rds')
+explant <- readRDS('../data/seurat/lung_explant_all.rds')
 explant <- subset(explant, subset=DF.classifications=='Singlet')
 explant[['explant.cluster']] <- Idents(explant)
 
@@ -72,7 +72,7 @@ markers <- FindAllMarkers(sobj.integrated, only.pos = TRUE, min.pct = 0.25,
                           thresh.use = 0.25,
                           print.bar=FALSE, verbose=FALSE)
 
-write.csv(markers,'data/seurat/lung_combined_all_markers.csv',row.names=FALSE)
+write.csv(markers,'../data/seurat/lung_combined_all_markers.csv',row.names=FALSE)
 
 top5 <- markers %>%
   group_by(cluster) %>%
@@ -147,7 +147,7 @@ sobj.integrated[['pct.SCoV2']] <- PercentageFeatureSet(sobj.integrated, pattern=
 tmp <- sobj.integrated@meta.data[,c('pct.H3N2','pct.MERS','pct.SCoV1','pct.SCoV2')]
 sobj.integrated[['virus']] <- ifelse(rowSums(tmp)==0, 'none', gsub('pct.','',colnames(tmp)[apply(tmp,1,which.max)]))
 
-saveRDS(sobj.integrated,'data/seurat/lung_combined_all.rds')
+saveRDS(sobj.integrated,'../data/seurat/lung_combined_all.rds')
 ```
 
 ```{r sessionInfo}

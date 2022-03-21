@@ -32,7 +32,7 @@ options(future.globals.maxSize = 10 * 1024 * 1024^2)
 use macrophages from the HuLu data (explants + autopsy)
 
 ```{r get_data}
-lung <- readRDS('data/seurat/lung_combined_all.rds')
+lung <- readRDS('../data/seurat/lung_combined_all.rds')
 
 momac <- subset(lung, idents = c('macrophages'))
 momac$cluster <- Idents(momac)
@@ -114,14 +114,14 @@ top10 <- markers %>%
 DotPlot(momac, features = unique(top10$gene)) + 
   theme(axis.text.x=element_text(angle=90,hjust=1,vjust=.5))
 
-write.csv(markers,'data/seurat/lung_combined_macrophage_markers.csv')
+write.csv(markers,'../data/seurat/lung_combined_macrophage_markers.csv')
 ```
 
 ```{r save_data}
 momac[['subcluster']] <- Idents(momac)
-saveRDS(momac,'data/seurat/lung_combined_macrophages.rds')
-writeLines(Cells(momac),'data/seurat/lung_combined_macrophages_barcodes.txt')
-write.csv(momac@meta.data,'data/seurat/lung_combined_macrophages_meta.csv')
+saveRDS(momac,'../data/seurat/lung_combined_macrophages.rds')
+writeLines(Cells(momac),'../data/seurat/lung_combined_macrophages_barcodes.txt')
+write.csv(momac@meta.data,'../data/seurat/lung_combined_macrophages_meta.csv')
 ```
 
 ```{r sessionInfo}

@@ -7,7 +7,7 @@ library(dplyr)
 
 options(future.globals.maxSize = 10 * 1024 * 1024^2)
 
-lung_all <- readRDS('data/seurat/lung_tissue_combined_all.rds')
+lung_all <- readRDS('../data/seurat/lung_tissue_combined_all.rds')
 condition_map <- c('control'='control','akut'='acute','chronic'='prolonged','prolonged'='prolonged')
 lung_all[['condition']] <- revalue(lung_all$condition, condition_map)
 lung_all[['cluster']] <- Idents(lung_all)
@@ -52,5 +52,5 @@ for (cond in c('acute','prolonged')) {
                   origin='autopsy')
 }
 
-write.csv(do.call(rbind,CCI),file.path('data','scDiffCom','CCI_tables.csv'))
+write.csv(do.call(rbind,CCI),file.path('..','data','scDiffCom','CCI_tables.csv'))
 

@@ -24,11 +24,11 @@ options(future.globals.maxSize = 10 * 1024 * 1024^2)
 2nd dataset: scRNAseq results on lung explant tissue (control samples; remove DF doublet calls)
 
 ```{r get_data,fig.width=8,fig.height=4}
-autopsy <- readRDS('data/seurat/lung_autopsy_controls.rds')
+autopsy <- readRDS('../data/seurat/lung_autopsy_controls.rds')
 autopsy <- subset(autopsy, subset=DF.classifications=='Singlet')
 autopsy[['autopsy.cluster']] <- Idents(autopsy)
 
-explant <- readRDS('data/seurat/lung_explant_controls.rds')
+explant <- readRDS('../data/seurat/lung_explant_controls.rds')
 explant <- subset(explant, subset=DF.classifications=='Singlet')
 explant[['explant.cluster']] <- Idents(explant)
 
@@ -145,7 +145,7 @@ sobj.integrated[['donor']] <- revalue(sobj.integrated@meta.data$donor, donor_map
 sobj.integrated[['cluster']] <- Idents(sobj.integrated)
 sobj.integrated[['origin']] <- factor(sobj.integrated$origin, levels=c('explant','autopsy'))
 
-saveRDS(sobj.integrated,'data/seurat/lung_combined_control.rds')
+saveRDS(sobj.integrated,'../data/seurat/lung_combined_control.rds')
 ```
 
 ```{r sessionInfo}
